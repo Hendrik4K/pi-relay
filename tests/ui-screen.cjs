@@ -52,6 +52,8 @@ function mockHost(){
    if(m.action==='screenSend'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const all=new Uint8Array(vnc.buffer.length+chunk.length);all.set(vnc.buffer);all.set(chunk,vnc.buffer.length);vnc.buffer=all;pump();}
    if(m.action==='screenUpload'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const prev=(window.__uploads||={})[m.token]||new Uint8Array(0);const all=new Uint8Array(prev.length+chunk.length);all.set(prev);all.set(chunk,prev.length);window.__uploads[m.token]=all;(window.__uploadChunks||=[]).push(m.offset);setTimeout(()=>deliver({type:'screenUploadResult',id:m.id,ok:true,result:m.final?{path:'/home/pi/Desktop/'+m.name,size:all.length}:{size:all.length}}),5);}
    if(m.action==='screenInfo')setTimeout(()=>deliver({type:'screenInfo',info:{os:'Raspberry Pi OS Trixie',host:'Raspi5',server:'x11vnc'}}),0);
+   if(m.action==='micStart')setTimeout(()=>deliver(window.__micFails?{type:'micState',state:'error',message:'Mikrofon-Empfänger auf dem Pi ist nicht bereit.'}:{type:'micState',state:'on'}),0);
+   if(m.action==='micStop'&&!m.quiet)setTimeout(()=>deliver({type:'micState',state:'off'}),0);
    if(m.action==='screenDisconnect')vnc.state='off';
    if(m.action==='screenFullscreen')setTimeout(()=>deliver({type:'screenFullscreen',on:m.on}),0);
    if(m.action==='screenClipboardRead')setTimeout(()=>deliver({type:'screenClipboardText',text:window.__windowsClipboard||'',reason:m.reason}),0);
@@ -60,7 +62,7 @@ function mockHost(){
 }
 
 (async()=>{
- const browser=await chromium.launch({headless:true,...(process.env.PI_RELAY_CHROME?{executablePath:process.env.PI_RELAY_CHROME}:{})});
+ const browser=await chromium.launch({headless:true,args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'],...(process.env.PI_RELAY_CHROME?{executablePath:process.env.PI_RELAY_CHROME}:{})});
  const output=path.resolve(__dirname,'../qa');fs.mkdirSync(output,{recursive:true});
  try{
   const page=await browser.newPage({viewport:{width:1000,height:700}});
@@ -99,6 +101,25 @@ function mockHost(){
   assert(Math.abs(box.width/box.height-4/3)<.01&&box.height<=700-46+1,'Fit keeps 4:3 inside the window');
   await mapsPointer(37,551,'Fit corner');
   await page.screenshot({path:path.join(output,'screen-viewer-1000.png')});
+
+  // Microphone: off by default, red while on, 20 ms chunks of 48 kHz mono s16le, off again.
+  const micToggle=page.locator('.mic-toggle');
+  assert.equal(await micToggle.getAttribute('aria-pressed'),'false','Microphone starts switched off');
+  await micToggle.click();
+  await page.waitForFunction(()=>window.__relayMessages.filter(m=>m.action==='micChunk').length>=5,null,{timeout:8000});
+  const chunk=await page.evaluate(()=>window.__relayMessages.find(m=>m.action==='micChunk').data);
+  assert.equal(Buffer.from(chunk,'base64').length,1920,'20 ms at 48 kHz mono 16 bit');
+  assert.equal(await micToggle.getAttribute('aria-pressed'),'true');assert.equal(await page.locator('.mic-dot').count(),1,'Red marker while on');
+  assert(await page.locator('.mic-device option').count()>=1,'Recording devices listed');
+  const remembered=await page.evaluate(()=>localStorage.getItem('pi-relay-mic-device'));assert(remembered,'Device remembered by id');
+  await micToggle.click();
+  await page.waitForFunction(()=>window.__relayMessages.some(m=>m.action==='micStop'));
+  const sent=await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='micChunk').length);await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='micChunk').length),sent,'No audio after switching off');
+  await page.evaluate(()=>{window.__micFails=true;});await micToggle.click();
+  await page.waitForFunction(()=>document.querySelector('.mic-toggle').getAttribute('aria-pressed')==='false');
+  assert((await page.locator('.screen-notice').innerText()).includes('nicht bereit'),'Receiver not ready: switch off with a reason');
+  await page.evaluate(()=>{window.__micFails=false;});
 
   await page.setViewportSize({width:600,height:520});await page.waitForTimeout(250);
   box=await mapsPointer(700,120,'Fit 600px');
@@ -217,6 +238,6 @@ function mockHost(){
   assert((await plain.locator('.screen-status').innerText()).includes('Nur in der App'));
   await plain.close();
   assert.equal(browser.contexts().length,1);
-  console.log('PASS: file drop to Pi inbox (overlay, chunks, intact, path to Pi clipboard), aspect fit requests (connect, resize end, not in 1:1), quality slider to server and remembered, real noVNC frame, pointer mapping (fit 1000/600 px, 1:1), aspect ratio, 480 px toolbar, German keysyms, key release on deactivate, clipboard both ways with Latin-1 notice, F11 fullscreen not forwarded, disconnect/explicit reconnect, honest error without retry, in-memory VNC password, browser-only state.');
+  console.log('PASS: microphone switch (off by default, 20 ms 48 kHz mono chunks, remembered device, red marker, stop, receiver-not-ready), file drop to Pi inbox (overlay, chunks, intact, path to Pi clipboard), aspect fit requests (connect, resize end, not in 1:1), quality slider to server and remembered, real noVNC frame, pointer mapping (fit 1000/600 px, 1:1), aspect ratio, 480 px toolbar, German keysyms, key release on deactivate, clipboard both ways with Latin-1 notice, F11 fullscreen not forwarded, disconnect/explicit reconnect, honest error without retry, in-memory VNC password, browser-only state.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

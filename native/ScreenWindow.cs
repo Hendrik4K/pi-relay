@@ -13,6 +13,7 @@ namespace PiRelay;
 public sealed class ScreenWindow : Window {
  private readonly WebView2 web=new();
  private readonly ScreenBridge bridge;
+ private readonly MicRelay mic;
  private bool ready,finished,initialized,fullscreen,sizing;
  private readonly System.Windows.Threading.DispatcherTimer fitTimer=new(){Interval=TimeSpan.FromMilliseconds(15)};
  private readonly System.Diagnostics.Stopwatch fitClock=new();
@@ -23,6 +24,7 @@ public sealed class ScreenWindow : Window {
  public string Alias=>bridge.Alias;
  public ScreenWindow(string alias,Func<Task<SharedSession>> ensure){
   bridge=new(alias,ensure,Post);
+  mic=new(ensure,Post);
   Title=alias+" · Pi-Bildschirm · Pi Relay";var area=SystemParameters.WorkArea;Width=Math.Min(1280,area.Width*.9);Height=Math.Min(840,area.Height*.9);MinWidth=480;MinHeight=320;WindowStartupLocation=WindowStartupLocation.CenterScreen;
   Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,21,26));Content=web;
   var icon=Path.Combine(AppContext.BaseDirectory,"PiRelay.ico");if(File.Exists(icon))Icon=BitmapFrame.Create(new Uri(icon));
@@ -45,6 +47,8 @@ public sealed class ScreenWindow : Window {
   settings.AreBrowserAcceleratorKeysEnabled=false;
   web.CoreWebView2.NavigationStarting+=(_,e)=>{if(!e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))e.Cancel=true;};
   web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;
+  // Only the bundled viewer page may use the microphone (for the "Mikro" switch); nothing else.
+  web.CoreWebView2.PermissionRequested+=(_,e)=>e.State=e.PermissionKind==CoreWebView2PermissionKind.Microphone&&e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase)?CoreWebView2PermissionState.Allow:CoreWebView2PermissionState.Deny;
   web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{await Handle(e.WebMessageAsJson);}catch(Exception ex){Post(new{type="screenNotice",message=ex.Message});}};
   web.NavigationCompleted+=(_,e)=>{ready=e.IsSuccess;};
   web.Source=new Uri("https://pi-relay.local/index.html?screen="+Uri.EscapeDataString(Alias));
@@ -55,6 +59,9 @@ public sealed class ScreenWindow : Window {
   case "screenOpen":await bridge.Open();break;
   case "screenSend":var data=Convert.FromBase64String(r.GetProperty("data").GetString()??"");if(data.Length>65536)throw new IOException("Datenblock zu groß");bridge.Send(data);break;
   case "screenDisconnect":bridge.Close();break;
+  case "micStart":try{await mic.Start();}catch(Exception e){Post(new{type="micState",state="error",message=e.Message});}break;
+  case "micChunk":var pcm=Convert.FromBase64String(r.GetProperty("data").GetString()??"");if(pcm.Length>16384)throw new IOException("Audioblock zu groß");mic.Send(pcm);break;
+  case "micStop":await mic.Stop(!(r.TryGetProperty("quiet",out var quiet)&&quiet.GetBoolean()));break;
   case "screenInfo":try{Post(new{type="screenInfo",info=await bridge.Inbox("screen_info",new{})});}catch{}break;
   case "screenFullscreen":SetFullscreen(r.GetProperty("on").GetBoolean());break;
   case "screenUpload":{var id=r.GetProperty("id").GetString();
@@ -95,6 +102,6 @@ public sealed class ScreenWindow : Window {
  private const double FitDelay=280,FitDuration=650;
  private void AdvanceFit(){var t=(fitClock.Elapsed.TotalMilliseconds-FitDelay)/FitDuration;if(t<0)return;t=Math.Min(1,t);ApplyFit(t<.5?4*t*t*t:1-Math.Pow(2-2*t,3)/2);if(t>=1)fitTimer.Stop();}
  private void ApplyFit(double t){Left=fitFrom.Left+(fitTo.Left-fitFrom.Left)*t;Top=fitFrom.Top+(fitTo.Top-fitFrom.Top)*t;Width=fitFrom.Width+(fitTo.Width-fitFrom.Width)*t;Height=fitFrom.Height+(fitTo.Height-fitFrom.Height)*t;}
- private void Finish(){if(finished)return;finished=true;fitTimer.Stop();bridge.Dispose();Finished?.Invoke();web.Dispose();}
+ private void Finish(){if(finished)return;finished=true;fitTimer.Stop();mic.Dispose();bridge.Dispose();Finished?.Invoke();web.Dispose();}
  public void Finish(bool close){Finish();if(close)Close();}
 }

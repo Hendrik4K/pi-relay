@@ -88,4 +88,17 @@ class WorkerTests(unittest.TestCase):
    self.assertFalse(worker.vnc_server_info(root,net,lambda *c:answers[c[0]])['localOnly'])
    answers['apt-cache']='  Candidate: 0.9.17-1\n';self.assertFalse(worker.vnc_server_info(root,net,lambda *c:answers[c[0]])['update'])
 
+ @unittest.skipIf(os.name=='nt','POSIX receiver script')
+ def test_mic_feed_passes_pcm_and_drops_backlog(self):
+  with tempfile.TemporaryDirectory() as d:
+   out=Path(d)/'out.raw';script=Path(d)/'empfang'
+   script.write_text('#!/bin/sh\nif [ "$1" = --status ]; then echo bereit; exit 0; fi\ncat > '+str(out)+'\n');script.chmod(0o755)
+   feed=worker.MicFeed(str(script));self.assertTrue(feed.status()['ready'])
+   import base64;feed.open()
+   for i in range(5):feed.send(base64.b64encode(bytes([i])*1920).decode())
+   feed.close();data=out.read_bytes()
+   self.assertEqual(len(data)%1920,0);self.assertTrue(data.endswith(bytes([4])*1920))
+   with self.assertRaises(ValueError):feed.send('AA==')
+  self.assertFalse(worker.MicFeed('/nonexistent/empfang').status()['ready'])
+
 if __name__=='__main__':unittest.main()

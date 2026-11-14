@@ -1,10 +1,59 @@
 import {useEffect,useRef,useState} from 'react';
 import RFB from '@novnc/novnc';
-import {ArrowClockwise,ArrowsIn,ArrowsOut,ClipboardText,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
+import {ArrowClockwise,ArrowsIn,ArrowsOut,ClipboardText,Microphone,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
 import './relay.css';
 
 const bridge=window.chrome?.webview;
 const send=(action,data={})=>bridge?.postMessage({action,...data});
+
+// Windows microphone for the Pi: 48 kHz mono s16le in 20 ms chunks, captured here (WASAPI shared
+// mode underneath) and fed by the host to the Pi's receiver over the existing SSH connection.
+const MIC_DEVICE_KEY='pi-relay-mic-device';
+const MIC_WORKLET=`class PiRelayMic extends AudioWorkletProcessor{constructor(){super();this.buf=new Int16Array(960);this.n=0;this.peak=0;}
+process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;for(let i=0;i<ch.length;i++){const v=Math.max(-1,Math.min(1,ch[i]));this.buf[this.n++]=v<0?v*32768:v*32767;const a=v<0?-v:v;if(a>this.peak)this.peak=a;
+if(this.n===960){this.port.postMessage({pcm:this.buf.buffer,level:this.peak},[this.buf.buffer]);this.buf=new Int16Array(960);this.n=0;this.peak=0;}}return true;}}
+registerProcessor('pi-relay-mic',PiRelayMic);`;
+const bytesToBase64=buffer=>{const bytes=new Uint8Array(buffer);let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(text);};
+function useMic(flash){
+ const [on,setOn]=useState(false),[state,setState]=useState('off'),[level,setLevel]=useState(0),[devices,setDevices]=useState([]);
+ const [device,setDevice]=useState(()=>{try{return localStorage.getItem(MIC_DEVICE_KEY)||'';}catch{return '';}});
+ const wanted=useRef(false),capture=useRef(null),deviceRef=useRef(device);deviceRef.current=device;
+ async function list(){try{const all=await navigator.mediaDevices.enumerateDevices();const mics=all.filter(d=>d.kind==='audioinput'&&d.deviceId&&d.deviceId!=='default'&&d.deviceId!=='communications');setDevices(mics);return mics;}catch{return [];}}
+ function remember(id){setDevice(id);try{localStorage.setItem(MIC_DEVICE_KEY,id);}catch{}}
+ function stopCapture(){const c=capture.current;capture.current=null;setLevel(0);if(!c)return;c.node.port.onmessage=null;c.stream.getTracks().forEach(t=>t.stop());c.ctx.close().catch(()=>{});}
+ async function startCapture(id){
+  stopCapture();
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  const ctx=new AudioContext({sampleRate:48000});
+  const url=URL.createObjectURL(new Blob([MIC_WORKLET],{type:'text/javascript'}));
+  try{await ctx.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
+  const node=new AudioWorkletNode(ctx,'pi-relay-mic',{numberOfInputs:1,numberOfOutputs:0,channelCount:1,channelCountMode:'explicit',channelInterpretation:'speakers'});
+  let frames=0;
+  node.port.onmessage=e=>{send('micChunk',{data:bytesToBase64(e.data.pcm)});if(++frames%3===0)setLevel(e.data.level);};
+  ctx.createMediaStreamSource(stream).connect(node);
+  capture.current={stream,ctx,node};
+  const track=stream.getAudioTracks()[0];
+  track.onended=()=>{if(capture.current?.stream===stream)disable('Das Mikrofon wurde getrennt.');};
+  const actual=track.getSettings().deviceId;if(actual&&actual!==deviceRef.current)remember(actual);
+  list();
+ }
+ function enable(){wanted.current=true;setOn(true);setState('starting');send('micStart');}
+ function disable(notice){wanted.current=false;setOn(false);setState('off');stopCapture();send('micStop');if(notice)flash(notice);}
+ async function choose(id){remember(id);if(capture.current){try{await startCapture(id);}catch(e){disable('Mikrofon lässt sich nicht öffnen: '+(e.message||e.name));}}}
+ // Host replies: on = receiver ready (start capturing), lost = SSH gone (switch stays on), error = off.
+ async function onState(m){
+  if(m.state==='on'){if(!wanted.current){send('micStop');return;}
+   try{await startCapture(deviceRef.current);setState('on');}
+   catch(e){disable(e.name==='OverconstrainedError'||e.name==='NotFoundError'?'Das gemerkte Mikrofon ist nicht angeschlossen. Mikro ausgeschaltet.':e.name==='NotAllowedError'?'Windows erlaubt Pi Relay das Mikrofon nicht (Einstellungen › Datenschutz › Mikrofon).':'Mikrofon lässt sich nicht öffnen: '+(e.message||e.name));}}
+  else if(m.state==='lost'){stopCapture();if(wanted.current)setState('waiting');if(m.message)flash(m.message);}
+  else if(m.state==='error'){disable(m.message);}
+ }
+ // After the viewer (re)connects, a switched-on microphone starts again by itself.
+ function resume(){if(wanted.current&&!capture.current){setState('starting');send('micStart');}}
+ function pause(){if(wanted.current){stopCapture();setState('waiting');send('micStop',{quiet:true});}}
+ useEffect(()=>{const changed=()=>list();navigator.mediaDevices?.addEventListener?.('devicechange',changed);list();return()=>{navigator.mediaDevices?.removeEventListener?.('devicechange',changed);stopCapture();};},[]);
+ return {on,state,level,devices,device,list,enable,disable,choose,onState,resume,pause};
+}
 
 export function toBase64(bytes){let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(text);}
 export function fromBase64(data){const text=atob(data),bytes=new Uint8Array(text.length);for(let i=0;i<text.length;i++)bytes[i]=text.charCodeAt(i);return bytes;}
@@ -32,6 +81,7 @@ export function ScreenView(){
  const host=useRef(null),rfb=useRef(null),channel=useRef(null),credentials=useRef(null),lastClipboard=useRef(''),share=useRef(true),noticeTimer=useRef(0);
  const [status,setStatus]=useState(bridge?'waiting':'unavailable');
  const [waitSeconds,setWaitSeconds]=useState(0);
+ const mic=useMic(text=>flashRef.current?.(text)),micRef=useRef(mic);micRef.current=mic;const flashRef=useRef();flashRef.current=flash;
  const [message,setMessage]=useState(bridge?'':'Der integrierte Viewer arbeitet in der Pi-Relay-App über deine bestehende SSH-Verbindung.');
  const [needs,setNeeds]=useState([]),[form,setForm]=useState({username:'',password:''});
  const [scale,setScale]=useState('fit'),[fullscreen,setFullscreen]=useState(false),[toolbar,setToolbar]=useState(true);
@@ -59,7 +109,7 @@ export function ScreenView(){
   const client=new RFB(host.current,pipe,credentials.current?{credentials:credentials.current}:{});
   rfb.current=client;
   client.scaleViewport=scaleRef.current==='fit';client.resizeSession=false;client.clipViewport=false;client.focusOnClick=true;client.showDotCursor=true;client.background='#17151a';client.qualityLevel=qualityRef.current;client.compressionLevel=2;
-  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');if(share.current)send('screenClipboardRead',{reason:'sync'});});
+  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');micRef.current.resume();if(share.current)send('screenClipboardRead',{reason:'sync'});});
   client.addEventListener('disconnect',e=>{if(rfb.current!==client&&rfb.current!==null)return;rfb.current=null;channel.current=null;setStatus(current=>current==='error'?'error':e.detail.clean?'disconnected':'error');setMessage(current=>current||(e.detail.clean?'Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.':'Die Bildschirmverbindung wurde unterbrochen.'));});
   client.addEventListener('credentialsrequired',e=>{setNeeds(e.detail.types||['password']);setStatus('credentials');});
   client.addEventListener('securityfailure',e=>{credentials.current=null;setStatus('error');setMessage('VNC-Anmeldung abgelehnt'+(e.detail.reason?': '+e.detail.reason:'.'));});
@@ -67,7 +117,7 @@ export function ScreenView(){
   client.addEventListener('desktopname',e=>setMeta(m=>({...m,desktop:e.detail.name})));
   send('screenOpen');
  }
- function disconnect(){teardown();setWaitSeconds(0);setStatus('disconnected');setMessage('Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.');}
+ function disconnect(){teardown();setWaitSeconds(0);if(micRef.current.on)micRef.current.disable();setStatus('disconnected');setMessage('Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.');}
  function submitCredentials(e){
   e.preventDefault();const values={};for(const type of needs)if(type==='username'||type==='password')values[type]=form[type];
   credentials.current=values;setForm({username:'',password:''});setStatus('connecting');rfb.current?.sendCredentials(values);
@@ -111,7 +161,8 @@ export function ScreenView(){
    case 'screenOpened':channel.current?.opened();break;
    case 'screenData':channel.current?.receive(fromBase64(m.data));break;
    case 'screenInfo':setMeta(v=>({...v,os:m.info?.os||'',host:m.info?.host||'',server:m.info?.server||''}));break;
-   case 'screenClosed':setWaitSeconds(0);if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');break;
+   case 'micState':micRef.current.onState(m);break;
+   case 'screenClosed':setWaitSeconds(0);micRef.current.pause();if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');break;
    case 'screenNotice':flash(m.message);break;
    case 'screenFullscreen':setFullscreen(m.on);setToolbar(!m.on);break;
    case 'screenResizeEnd':requestFit();break;
@@ -154,6 +205,11 @@ export function ScreenView(){
     <span className="screen-clipboard">
      <button className="screen-tool" disabled={!connected} onClick={pasteToPi} title="Text aus der Windows-Zwischenablage an den Pi übergeben"><ClipboardText size={17}/><span>An Pi</span></button>
      <label className="screen-share" aria-label="Zwischenablage teilen" title={clipboardSeen?'Der Pi hat bereits Text gesendet.':'Der Pi sendet erst Text, wenn dort etwas kopiert wird. Nur Text, keine Dateien.'}><input type="checkbox" checked={shareClipboard} onChange={e=>setShareClipboard(e.target.checked)}/><span>Zwischenablage teilen</span></label>
+     <span className={'screen-mic'+(mic.on?' on':'')}>
+      <button className="screen-tool mic-toggle" aria-pressed={mic.on} disabled={!connected&&!mic.on} onClick={()=>mic.on?mic.disable():mic.enable()} title={mic.on?(mic.state==='waiting'?'Mikro wartet auf die Verbindung · ausschalten':'Windows-Mikrofon geht an den Pi · ausschalten'):'Windows-Mikrofon an den Pi senden'}><Microphone size={17} weight={mic.on?'fill':'regular'}/>{mic.on&&<i className="mic-dot"/>}<span>Mikro</span></button>
+      {mic.on&&<span className="mic-level" aria-hidden="true"><b style={{transform:'scaleX('+Math.min(1,mic.level*1.8)+')'}}/></span>}
+      <select className="mic-device" aria-label="Mikrofon wählen" value={mic.device} onFocus={mic.list} onChange={e=>mic.choose(e.target.value)}>{!mic.devices.some(d=>d.deviceId===mic.device)&&<option value={mic.device}>{mic.device?'Gemerktes Mikrofon':'Standard-Mikrofon'}</option>}{mic.devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label||'Mikrofon'}</option>)}</select>
+     </span>
     </span>
    </span>
   </header>

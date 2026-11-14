@@ -164,10 +164,66 @@ def vnc_server_info(proc='/proc', net='/proc/net', query=None):
             'update': bool(installed and candidate and candidate != installed),
             'addresses': addresses, 'localOnly': bool(addresses) and all(is_loopback(a) for a in addresses)}
 
+# Windows microphone into the Pi: raw PCM (s16le, 48 kHz, mono) is fed to the user's fixed
+# receiver ~/.local/bin/windows-mikro-empfang, which publishes it as a PipeWire source. Only this
+# program is started; chunks queue briefly and the oldest are dropped so latency stays low.
+MIC_RECEIVER = '~/.local/bin/windows-mikro-empfang'
+
+class MicFeed:
+    MAX_QUEUED = 8  # 8 x 20 ms
+
+    def __init__(self, receiver=MIC_RECEIVER):
+        self.receiver = os.path.expanduser(receiver)
+        self.process, self.queue, self.dropped = None, None, 0
+
+    def status(self):
+        if not os.access(self.receiver, os.X_OK): return {'ready': False, 'message': 'Empfänger fehlt auf dem Pi: ' + MIC_RECEIVER}
+        try: done = subprocess.run([self.receiver, '--status'], capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError) as exc: return {'ready': False, 'message': str(exc)}
+        text = (done.stdout + done.stderr).strip()
+        return {'ready': done.returncode == 0 and 'bereit' in text, 'message': text[:300]}
+
+    def open(self):
+        import queue
+        self.close()
+        process = subprocess.Popen([self.receiver], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        feed = queue.Queue()
+        self.process, self.queue, self.dropped = process, feed, 0
+        def write():
+            while True:
+                chunk = feed.get()
+                if chunk is None: break
+                try: process.stdin.write(chunk); process.stdin.flush()
+                except (OSError, ValueError): break
+            try: process.stdin.close()
+            except OSError: pass
+        threading.Thread(target=write, daemon=True).start()
+        return {}
+
+    def send(self, data):
+        if not self.process or self.process.poll() is not None: raise ValueError('Mikrofon-Empfänger läuft nicht')
+        chunk = base64.b64decode(data)
+        if len(chunk) > 65536: raise ValueError('Audioblock zu groß')
+        while self.queue.qsize() >= self.MAX_QUEUED:
+            try: self.queue.get_nowait(); self.dropped += 1
+            except Exception: break
+        self.queue.put(chunk)
+        return {'dropped': self.dropped}
+
+    def close(self):
+        process, feed = self.process, self.queue
+        self.process = self.queue = None
+        if feed: feed.put(None)
+        if process:
+            try: process.wait(timeout=2)
+            except subprocess.TimeoutExpired: process.kill()
+        return {}
+
 class Broker:
     def __init__(self, emit):
         self.emit, self.terminal, self.master = emit, None, None
         self.sockets, self.next_socket = {}, 0
+        self.mic = MicFeed()
 
     def resize(self, args):
         import fcntl, struct, termios
@@ -254,12 +310,17 @@ class Broker:
         if op == 'device_info': return device_info()
         if op == 'screen_info': return screen_info()
         if op == 'vnc_server_info': return vnc_server_info()
+        if op == 'audio_status': return self.mic.status()
+        if op == 'audio_open': return self.mic.open()
+        if op == 'audio_send': return self.mic.send(args.get('data', ''))
+        if op == 'audio_close': return self.mic.close()
         if op == 'inbox_write': return inbox_write(args)
         if op == 'inbox_cancel': return inbox_cancel(args)
         if op in ('list', 'read', 'write', 'run'): return perform(request['config'], request)
         raise ValueError('Unbekannte Operation')
 
     def close(self):
+        self.mic.close()
         for sock in list(self.sockets.values()): sock.close()
         self.sockets.clear()
         if self.terminal and self.terminal.poll() is None:
@@ -283,7 +344,7 @@ def main():
         for line in sys.stdin:
             if len(line) > 2097152: raise ValueError('Anfrage zu groß')
             request = json.loads(line)
-            if request['op'] in ('run', 'tcp_open', 'tcp_send'): pool.submit(respond, request)
+            if request['op'] in ('run', 'tcp_open', 'tcp_send', 'audio_status'): pool.submit(respond, request)
             else: respond(request)
     finally:
         broker.close()

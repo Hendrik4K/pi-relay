@@ -54,8 +54,9 @@ function IconSlot({slot,custom,call,children}) {
 }
 
 
-function ScreenIcon({size=22,external=false}) {
- return <span className={'screen-symbol'+(external?'':' integrated')} aria-hidden="true"><Monitor size={size}/><span className="vnc-badge">{external?'VNC':'noVNC'}</span></span>;
+// The badge names the VNC server on the Pi once known (x11vnc, WayVNC); noVNC remains the viewer.
+function ScreenIcon({size=22,external=false,server=''}) {
+ return <span className={'screen-symbol'+(external?'':' integrated')+(server&&!external?' with-server':'')} aria-hidden="true"><Monitor size={size}/><span className="vnc-badge">{external?'VNC':server||'noVNC'}</span></span>;
 }
 function LookingAvatar({id,motion,className='',src}) {
  const portrait=useRef();
@@ -182,6 +183,7 @@ export function App() {
  // Network ping only (no SSH): the Pi is shut down or not on the network.
  const offline=!connected&&data.reachability?.[profile?.hostname]==='offline';
  const facts=data.devices?.[profile?.hostname];
+ const piServer=data.vncServers?.[profile?.hostname]?.server||'';
  // The facts beside the heading follow its responsive size.
  const titleRow=useRef();
  useLayoutEffect(()=>{const row=titleRow.current,h2=row?.querySelector('h2');if(!h2)return;const sync=()=>row.style.setProperty('--title-size',getComputedStyle(h2).fontSize);sync();const watch=new ResizeObserver(sync);watch.observe(h2);return()=>watch.disconnect();},[view]);
@@ -230,11 +232,11 @@ export function App() {
     <div className="panel-content">
      <header className="app-header" onMouseDown={e=>{if(e.button===0&&native&&e.target.closest('button')===null)request('drag');}}>
       <div className="brand">
-       {view==='home'?<Asset name="raspberry" alt="Raspberry Pi"/>:view==='keys'?<Asset name="key-profile" className="key-profile-icon" alt=""/>:view==='screen'||view==='external'?<ScreenIcon size={32} external={view==='external'||useExternal}/>:view==='agent'?<LookingAvatar id={agentDraft.id} src={userIcon(data.icons,agentDraft.id)} className="header-avatar" motion={data.settings.motion&&visible}/>:view==='settings'?<GearSix size={36}/>:<ArrowClockwise size={34}/>}
+       {view==='home'?<Asset name="raspberry" alt="Raspberry Pi"/>:view==='keys'?<Asset name="key-profile" className="key-profile-icon" alt=""/>:view==='screen'||view==='external'?<ScreenIcon size={32} external={view==='external'||useExternal} server={piServer}/>:view==='agent'?<LookingAvatar id={agentDraft.id} src={userIcon(data.icons,agentDraft.id)} className="header-avatar" motion={data.settings.motion&&visible}/>:view==='settings'?<GearSix size={36}/>:<ArrowClockwise size={34}/>}
        <div><h1 ref={heading} tabIndex={-1}>{titles[view]}</h1><span>{view==='home'?(native?'MANAGEMENTZENTRALE':'ENTWURF · BEISPIELSTATUS'):view==='keys'?'DEINE ZUGÄNGE. DEINE SCHLÜSSEL.':view==='screen'?'DEIN DESKTOP. GEMEINSAM VERBUNDEN.':view==='external'?'DEIN RÜCKFALL. DEINE WAHL.':view==='settings'?'SO WIE ES ZU DIR PASST.':view==='agent'?'DEIN PI. DEINE FREIGABE.':'WAS ZULETZT PASSIERT IST.'}</span></div>
       </div>
       <div className="window-actions">
-       {view==='home'?<><button className="icon-button quiet" aria-label="In den Infobereich minimieren" onClick={collapse}><CaretDown size={18}/></button><button className="icon-button screen-button" aria-label="Pi-Bildschirm öffnen" title={useExternal?'Pi-Bildschirm · externer VNC Viewer':'Pi-Bildschirm · integrierter Viewer (noVNC)'} onClick={()=>navigate('screen')}><ScreenIcon external={useExternal}/></button><button className="icon-button" aria-label="Einstellungen" onClick={()=>navigate('settings')}><GearSix size={22}/></button></>:<>{view==='keys'&&<><button className="icon-button" title="SSH-Ordner öffnen" aria-label="SSH-Ordner öffnen" onClick={()=>call('openKeyFolder')}><FolderOpen size={21}/></button><button className="icon-button" title="Schlüssel zuordnen" aria-label="Schlüssel zuordnen" onClick={()=>call('addKey')}><Plus size={21}/></button></>}{view!=='keys'&&<button className="icon-button close-view" aria-label={titles[view]+' schließen'} onClick={closeView}><X size={21}/></button>}</>}
+       {view==='home'?<><button className="icon-button quiet" aria-label="In den Infobereich minimieren" onClick={collapse}><CaretDown size={18}/></button><button className="icon-button screen-button" aria-label="Pi-Bildschirm öffnen" title={useExternal?'Pi-Bildschirm · externer VNC Viewer':'Pi-Bildschirm · '+(piServer?piServer+' auf dem Pi, angezeigt mit noVNC':'integrierter Viewer (noVNC)')} onClick={()=>navigate('screen')}><ScreenIcon external={useExternal} server={piServer}/></button><button className="icon-button" aria-label="Einstellungen" onClick={()=>navigate('settings')}><GearSix size={22}/></button></>:<>{view==='keys'&&<><button className="icon-button" title="SSH-Ordner öffnen" aria-label="SSH-Ordner öffnen" onClick={()=>call('openKeyFolder')}><FolderOpen size={21}/></button><button className="icon-button" title="Schlüssel zuordnen" aria-label="Schlüssel zuordnen" onClick={()=>call('addKey')}><Plus size={21}/></button></>}{view!=='keys'&&<button className="icon-button close-view" aria-label={titles[view]+' schließen'} onClick={closeView}><X size={21}/></button>}</>}
       </div>
      </header>
      <div ref={body} className={'view-body view-'+view} key={view}>

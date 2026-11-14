@@ -91,3 +91,52 @@ public sealed class SingleInstances<T> where T:class {
  public IReadOnlyCollection<string> Keys=>items.Keys;
  public IReadOnlyCollection<T> Values=>items.Values.ToList();
 }
+
+// Windows microphone for programs on the Pi: the viewer captures PCM (s16le, 48 kHz, mono) and this
+// relay feeds it to the Pi's fixed receiver over the alias's existing SSH transport. At most a few
+// 20 ms chunks wait here; older ones are dropped so the delay stays short.
+public sealed class MicRelay : IDisposable {
+ private readonly Func<Task<SharedSession>> ensure;
+ private readonly Action<object> post;
+ private readonly object gate=new();
+ private SharedSession? session;
+ private Channel<byte[]>? queue;
+ private int generation;
+ public bool Active {get{lock(gate)return queue!=null;}}
+ public MicRelay(Func<Task<SharedSession>> ensure,Action<object> post){this.ensure=ensure;this.post=post;}
+
+ public async Task Start(){
+  int current;lock(gate)current=++generation;
+  await StopFeed();
+  var target=await ensure();
+  var status=await target.Request("audio_status");
+  if(!status.GetProperty("ready").GetBoolean()){var text=status.GetProperty("message").GetString();throw new InvalidOperationException("Mikrofon-Empfänger auf dem Pi ist nicht bereit"+(string.IsNullOrWhiteSpace(text)?".":": "+text));}
+  await target.Request("audio_open");
+  var chunks=Channel.CreateBounded<byte[]>(new BoundedChannelOptions(6){FullMode=BoundedChannelFullMode.DropOldest,SingleReader=true});
+  lock(gate){if(current!=generation){_=target.Request("audio_close");return;}session=target;queue=chunks;}
+  post(new{type="micState",state="on"});
+  _=Drain(target,chunks,current);
+ }
+
+ public void Send(byte[] pcm){Channel<byte[]>? chunks;lock(gate)chunks=queue;chunks?.Writer.TryWrite(pcm);}
+
+ private async Task Drain(SharedSession target,Channel<byte[]> chunks,int current){
+  try{await foreach(var chunk in chunks.Reader.ReadAllAsync())await target.Request("audio_send",new{data=Convert.ToBase64String(chunk)});}
+  catch(Exception e){
+   bool mine;lock(gate){mine=current==generation&&ReferenceEquals(queue,chunks);if(mine){queue=null;session=null;}}
+   // The switch stays on: the viewer restarts the microphone after its next successful connect.
+   if(mine)post(new{type="micState",state="lost",message=target.IsReady?"Mikrofon unterbrochen: "+e.Message:"SSH-Verbindung beendet. Das Mikro startet nach dem Wiederverbinden neu."});
+  }
+ }
+
+ public async Task Stop(bool announce=true){lock(gate)generation++;await StopFeed();if(announce)post(new{type="micState",state="off"});}
+
+ private async Task StopFeed(){
+  SharedSession? target;Channel<byte[]>? chunks;
+  lock(gate){target=session;chunks=queue;session=null;queue=null;}
+  chunks?.Writer.TryComplete();
+  if(target is {IsReady:true})try{await target.Request("audio_close");}catch{}
+ }
+
+ public void Dispose(){_=StopFeed();}
+}

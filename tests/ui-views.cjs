@@ -155,7 +155,7 @@ const {chromium}=load('playwright');
   assert((await page.locator('.app-footer button').innerText()).startsWith('Externer Viewer (Rückfall)'),'Screen footer is the functional fallback link, not a close-only footer');
   assert.equal(await page.locator('.view-screen button').first().innerText(),'Bildschirm öffnen');
   assert.equal(await page.getByRole('dialog').count(),0);
-  assert.equal(await page.locator('header .vnc-badge').innerText(),'noVNC','Integrated viewer is the default badge');
+  assert.equal(await page.locator('header .vnc-badge').innerText(),'x11vnc','Badge names the Pi\'s VNC server once known');
   assert(await page.locator('.view-screen').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'Screen view has no scrolling content');
   assert.equal(await page.locator('.vnc-server-card code').innerText(),'x11vnc 0.9.17');
   assert.equal(await page.getByRole('button',{name:'Bildschirm öffnen',exact:true}).isEnabled(),true);

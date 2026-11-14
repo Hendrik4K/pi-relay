@@ -223,7 +223,7 @@ public sealed class RelayWindow : Window {
  private async Task<SharedSession> Authenticate(string alias,SharedSession session){
   if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
   authenticating=true;
-  try{Notice("Verbinde mit "+alias+" … Den Sicherheitsschlüssel bestätigen, sobald Windows danach fragt.");await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);return session;}
+  try{Notice("Verbinde mit "+alias+" … Den Sicherheitsschlüssel bestätigen, sobald Windows danach fragt.");await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);_=LoadVncServer(alias,session);return session;}
   finally{authenticating=false;Push();}
  }
  private async Task WaitForPi(string alias,string host){
@@ -234,6 +234,8 @@ public sealed class RelayWindow : Window {
   catch(OperationCanceledException){throw new InvalidOperationException("Warten auf den Pi abgebrochen.");}
   finally{waitingFor.Remove(alias);cancel.Dispose();CheckReachability();Push();}
  }
+ // Which VNC server the Pi runs (for the header badge and the screen view); read-only, failures ignored.
+ private async Task LoadVncServer(string alias,SharedSession session){try{var host=profiles.FirstOrDefault(p=>p.Alias==alias)?.Hostname;if(string.IsNullOrEmpty(host))return;vncServers[host]=await session.Request("vnc_server_info");Push();}catch{}}
  // Read-only board facts for the header; failures just leave the previous values.
  private async Task LoadDeviceFacts(string alias,SharedSession session){
   try{
