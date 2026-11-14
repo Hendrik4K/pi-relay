@@ -73,9 +73,19 @@ public sealed class ScreenWindow : Window {
   case "screenUploadCancel":try{await bridge.Inbox("inbox_cancel",new{token=r.GetProperty("token").GetString()});}catch{}break;
   case "screenFit":FitTo(r.GetProperty("dw").GetDouble(),r.GetProperty("dh").GetDouble());break;
   case "screenClipboardWrite":var text=r.GetProperty("text").GetString()??"";if(text.Length>1048576)throw new IOException("Zwischenablage zu groß");SetClipboard(text);break;
-  case "screenClipboardRead":Post(new{type="screenClipboardText",text=ReadClipboard(),reason=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual"});break;
+  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual";Post(new{type="screenClipboardText",text=why=="manual"||!PrivateClipboard()?ReadClipboard():"",reason=why});break;}
  }}
  private static void SetClipboard(string text){for(var attempt=0;;attempt++){try{System.Windows.Clipboard.SetText(text);return;}catch(System.Runtime.InteropServices.COMException)when(attempt<3){Thread.Sleep(40);}}}
+ // Password managers flag copied secrets (KeePass, Bitwarden, 1Password, Windows clipboard history).
+ // Such content reaches the Pi only through an explicit "An Pi", never through the automatic sync.
+ private static bool PrivateClipboard(){
+  try{
+   if(System.Windows.Clipboard.ContainsData("ExcludeClipboardContentFromMonitorProcessing")||System.Windows.Clipboard.ContainsData("Clipboard Viewer Ignore"))return true;
+   foreach(var format in new[]{"CanIncludeInClipboardHistory","CanUploadToCloudClipboard"})
+    if(System.Windows.Clipboard.GetData(format) is MemoryStream flag&&flag.Length>=4){var value=new byte[4];flag.Read(value,0,4);if(BitConverter.ToInt32(value)==0)return true;}
+  }catch(System.Runtime.InteropServices.COMException){return true;}
+  return false;
+ }
  private static string ReadClipboard(){try{return System.Windows.Clipboard.ContainsText()?System.Windows.Clipboard.GetText():"";}catch(System.Runtime.InteropServices.COMException){return "";}}
  private void SetFullscreen(bool on){
   if(on!=fullscreen){fullscreen=on;

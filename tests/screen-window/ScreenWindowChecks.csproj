@@ -3,6 +3,7 @@
  <ItemGroup>
   <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
   <Compile Include="../../native/AgentSession.cs" Link="AgentSession.cs"/>
+  <Compile Include="../../native/LoopbackPeer.cs" Link="LoopbackPeer.cs"/>
   <Compile Include="../../native/ScreenSession.cs" Link="ScreenSession.cs"/>
   <Compile Include="../../native/ScreenWindow.cs" Link="ScreenWindow.cs"/>
   <Compile Include="../../native/Models.cs" Link="Models.cs"/>

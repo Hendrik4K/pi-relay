@@ -94,14 +94,23 @@ public sealed class SharedSession : IDisposable {
    return result.GetProperty("result").Clone();
   }catch(TimeoutException){throw new IOException("Zeitlimit erreicht. Der Auftrag wird nicht automatisch wiederholt.");}finally{pending.TryRemove(id,out _);}
  }
- public async Task<int> VncPort(){
+ private string? vncViewer;
+ // The port is for the external viewer Pi Relay starts (`viewerExe`); connections from any other
+ // program or Windows account on this PC are closed before they reach the Pi.
+ public async Task<int> VncPort(string viewerExe){
   if(!IsReady)throw new InvalidOperationException("SSH-Zugang zuerst verbinden");
+  vncViewer=viewerExe;
   if(vnc!=null)return ((IPEndPoint)vnc.LocalEndpoint).Port;
   vnc=new TcpListener(IPAddress.Loopback,0);vnc.Start();tunnelLifetime=new();_=AcceptVnc(vnc,tunnelLifetime.Token);
   return ((IPEndPoint)vnc.LocalEndpoint).Port;
  }
  private async Task AcceptVnc(TcpListener listener,CancellationToken token){
-  try{while(!token.IsCancellationRequested){var client=await listener.AcceptTcpClientAsync(token);_=ForwardVnc(client,token);}}catch(OperationCanceledException){}catch(SocketException){}
+  try{while(!token.IsCancellationRequested){
+   var client=await listener.AcceptTcpClientAsync(token);
+   var peer=(IPEndPoint)client.Client.RemoteEndPoint!;var viewer=vncViewer;
+   if(viewer==null||!LoopbackPeer.IsFrom(peer,((IPEndPoint)listener.LocalEndpoint).Port,viewer)){client.Dispose();LastError="Bildschirm: Zugriff eines anderen Programms auf den Viewer-Port abgelehnt.";changed();continue;}
+   _=ForwardVnc(client,token);
+  }}catch(OperationCanceledException){}catch(SocketException){}
  }
  private async Task ForwardVnc(TcpClient client,CancellationToken token){
   try{

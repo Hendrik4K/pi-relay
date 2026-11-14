@@ -34,10 +34,11 @@ Beispiel **x11vnc** (X11-Desktop, z. B. Cinnamon), gestartet im Autostart des an
 x11vnc -localhost -rfbport 5900 -forever -shared -nopw -quiet -noxdamage
 ```
 
-Ohne Passwort ist das nur deshalb vertretbar, weil der Server ausschließlich auf `127.0.0.1` lauscht und damit nur über SSH erreichbar ist. Nie auf `0.0.0.0` bzw. ohne `-localhost` betreiben.
+Auf `127.0.0.1` ist der Server **aus dem Netzwerk** nicht erreichbar, Windows kommt nur über die SSH-Verbindung heran. Programme und weitere Benutzer **auf dem Pi selbst** können `127.0.0.1:5900` aber erreichen. Ohne VNC-Passwort ist das nur auf einem Pi vertretbar, den du allein nutzt und auf dem keine fremden Dienste laufen. Sonst ein VNC-Passwort setzen (WayVNC `enable_auth=true`, x11vnc `-rfbauth`): Pi Relay fragt es im Bildschirmfenster ab und behält es nur im Arbeitsspeicher. Nie auf `0.0.0.0` bzw. ohne `-localhost` betreiben. Pi Relay verbindet nur, wenn Port 5900 dem eigenen Benutzer, root oder dem angemeldeten Desktop-Benutzer gehört; ein fremder Prozess, der den Port vorher belegt, bekommt so weder Tastatur noch Zwischenablage.
 
 Nach einem Neustart des Pi wartet Pi Relay geduldig: Ein Klick auf „Verbinden“, solange der Pi noch nicht antwortet, verbindet genau einmal, sobald er wieder da ist (bis zu 3 Minuten). Startet der VNC-Server erst nach der Desktop-Anmeldung, versucht der Viewer es bis zu 2 Minuten lang über die bestehende SSH-Verbindung weiter. Neue Abfragen des Sicherheitsschlüssels ohne deinen Klick gibt es nicht.
 
+- Ein zweiter Zugang namens `BackDoor` (z. B. mit einem Ersatz-Sicherheitsschlüssel) wird als einklappbarer Ersatzzugang unter dem ersten angezeigt; alle anderen Aliase erscheinen normal untereinander.
 - SSH-Zugänge als Aliase in `~/.ssh/config` (z. B. `Host MasterControl` mit `HostName 192.168.1.50`). Pi Relay liest nur öffentliche Schlüssel, kopiert keine privaten Schlüssel und erzeugt keine neuen.
 
 ## Bauen
@@ -55,8 +56,11 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 
 - Kein Netzwerkdienst auf dem Pi: Der Worker (`native/remote_worker.py`) läuft nur für die Dauer der SSH-Sitzung.
 - Der VNC-Tunnel kennt genau ein festes Ziel (`127.0.0.1:5900`), keine frei wählbare Adresse.
-- Agenten-Dateizugriffe sind auf den freigegebenen Ordner begrenzt. Freigegebene **Shell-Befehle** haben die Rechte des Linux-Benutzers; für echte Trennung einen eigenen eingeschränkten Pi-Benutzer verwenden.
-- Der MCP-Server ist eine lokale Named Pipe für den aktuellen Windows-Benutzer.
+- Agenten-Dateizugriffe sind auf den freigegebenen Ordner begrenzt. Ohne Befehlsrecht sind Dateien gesperrt, über die später Befehle laufen können (`.git/`, `.ssh/`, Shell- und Desktop-Startdateien). Schreibrechte bleiben trotzdem mächtig, etwa für Build-Skripte im Ordner. Freigegebene **Shell-Befehle** haben die Rechte des Linux-Benutzers; für echte Trennung einen eigenen eingeschränkten Pi-Benutzer verwenden.
+- Der MCP-Server ist eine lokale Named Pipe nur für den aktuellen Windows-Benutzer; eine gleichnamige Pipe eines anderen Kontos wird abgelehnt.
+- Der lokale Port für einen externen Viewer (RealVNC/TigerVNC) bedient nur den Viewer, den Pi Relay selbst gestartet hat.
+- „Zwischenablage teilen“ gleicht Text automatisch ab, überspringt dabei aber Inhalte, die Passwortmanager als vertraulich markieren; die gehen nur über „An Pi“ auf den Pi.
+- Bekannte Grenze: Ein bereits kompromittierter Pi kann Pi Relay mit übergroßen Antworten zum Absturz bringen, aber keinen Code auf Windows ausführen.
 
 ## Hinweis zu Bildern und Marken
 

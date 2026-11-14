@@ -17,12 +17,18 @@ public sealed record StagedBuild(string AppVersion,string NoVnc,DateTimeOffset B
 // Restarts always go through Explorer, so the new process gets the user's normal environment
 // instead of inheriting this process tree (an inherited agent environment once broke SSH).
 public static class Relaunch {
- public static string Script(int processId,string exe)=>"Wait-Process -Id "+processId+" -Timeout 30 -ErrorAction SilentlyContinue; & (Join-Path $env:WINDIR 'explorer.exe') '"+exe.Replace("'","''")+"'";
- public static void Start(int processId,string exe){
-  var info=new ProcessStartInfo("powershell.exe"){UseShellExecute=false,CreateNoWindow=true};
-  foreach(var arg in new[]{"-NoProfile","-NonInteractive","-EncodedCommand",Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(Script(processId,exe)))})info.ArgumentList.Add(arg);
-  Process.Start(info);
+ // The executable path travels in an environment variable, never inside the script text, so no
+ // quote character in a path can end a string; PowerShell itself comes from System32.
+ public static string PowerShell=>Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","powershell.exe");
+ public const string ExeVariable="PIRELAY_RELAUNCH_EXE";
+ public static string Script(int processId)=>"Wait-Process -Id "+processId+" -Timeout 30 -ErrorAction SilentlyContinue; & (Join-Path $env:WINDIR 'explorer.exe') $env:"+ExeVariable;
+ public static ProcessStartInfo Info(int processId,string exe){
+  var info=new ProcessStartInfo(PowerShell){UseShellExecute=false,CreateNoWindow=true};
+  foreach(var arg in new[]{"-NoProfile","-NonInteractive","-EncodedCommand",Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(Script(processId)))})info.ArgumentList.Add(arg);
+  info.Environment[ExeVariable]=exe;
+  return info;
  }
+ public static void Start(int processId,string exe)=>Process.Start(Info(processId,exe));
 }
 
 // The integrated viewer (bundled noVNC) changes only with a new, tested Pi Relay build.
@@ -81,14 +87,14 @@ public sealed partial class IntegratedViewer {
   if(ProjectRoot==null)throw new InvalidOperationException("Diese Pi-Relay-Installation enthält keinen Projektordner. Das Update kommt mit dem nächsten Installer.");
   if(Building)throw new InvalidOperationException("Ein Update-Build läuft bereits.");
   if(!HasUpdate||version!=cache.Latest)throw new InvalidOperationException("Die Update-Anzeige hat sich geändert. Bitte erneut prüfen.");
-  var info=new ProcessStartInfo("powershell.exe"){UseShellExecute=true,WorkingDirectory=ProjectRoot};
+  var info=new ProcessStartInfo(Relaunch.PowerShell){UseShellExecute=true,WorkingDirectory=ProjectRoot};
   foreach(var arg in new[]{"-NoProfile","-ExecutionPolicy","Bypass","-NoExit","-File",Path.Combine(ProjectRoot,"scripts","update-novnc.ps1"),"-Version",version})info.ArgumentList.Add(arg);
   build=Process.Start(info);changed();
  }
  // Hands over to a script that waits for this process, backs up release\, swaps in release-next\ and relaunches via Explorer.
  public void StartActivation(int processId){
   var staged=Staged??throw new InvalidOperationException("Kein fertig getesteter Build zum Aktivieren vorhanden.");
-  var info=new ProcessStartInfo("powershell.exe"){UseShellExecute=true,WorkingDirectory=ProjectRoot!,WindowStyle=ProcessWindowStyle.Minimized};
+  var info=new ProcessStartInfo(Relaunch.PowerShell){UseShellExecute=true,WorkingDirectory=ProjectRoot!,WindowStyle=ProcessWindowStyle.Minimized};
   foreach(var arg in new[]{"-NoProfile","-ExecutionPolicy","Bypass","-File",Path.Combine(ProjectRoot!,"scripts","activate-release.ps1"),"-WaitPid",processId.ToString(),"-ExpectedVersion",staged.AppVersion})info.ArgumentList.Add(arg);
   Process.Start(info);
  }

@@ -13,7 +13,7 @@ const MIC_WORKLET=`class PiRelayMic extends AudioWorkletProcessor{constructor(){
 process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;for(let i=0;i<ch.length;i++){const v=Math.max(-1,Math.min(1,ch[i]));this.buf[this.n++]=v<0?v*32768:v*32767;const a=v<0?-v:v;if(a>this.peak)this.peak=a;
 if(this.n===960){this.port.postMessage({pcm:this.buf.buffer,level:this.peak},[this.buf.buffer]);this.buf=new Int16Array(960);this.n=0;this.peak=0;}}return true;}}
 registerProcessor('pi-relay-mic',PiRelayMic);`;
-// Level meter in decibels like Wave Link / Windows: -60 dBFS (empty) to 0 dBFS (full).
+// Level meter in decibels like common audio tools: -60 dBFS (empty) to 0 dBFS (full).
 const meterScale=peak=>Math.max(0,Math.min(1,(20*Math.log10(Math.max(peak,1e-6))+60)/60));
 const bytesToBase64=buffer=>{const bytes=new Uint8Array(buffer);let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(text);};
 const TOOL_ORDER_KEY='pi-relay-toolbar-order';

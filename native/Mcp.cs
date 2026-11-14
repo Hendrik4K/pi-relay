@@ -7,6 +7,12 @@ using System.Text.Json;
 namespace PiRelay;
 public static class Mcp {
  public static string PipeName=>"pi-relay-"+WindowsIdentity.GetCurrent().User!.Value.Replace('-','_');
+ // A new server instance joins an existing pipe of the same name. A pipe another Windows account
+ // created first under this name would carry that account's ACL, so its instances are refused.
+ public static bool OwnedByCurrentUser(NamedPipeServerStream pipe){
+  try{var owner=pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier));using var me=WindowsIdentity.GetCurrent();return owner!=null&&(owner.Equals(me.Owner)||owner.Equals(me.User));}
+  catch(Exception){return false;}
+ }
  public static readonly object[] Tools=[
   new {name="pi_status",description="Zeigt den vom Benutzer freigegebenen Pi-Zugang. Startet keine Anmeldung.",inputSchema=new {type="object",properties=new {},additionalProperties=false}},
   new {name="pi_list_files",description="Dateien im freigegebenen Projektordner anzeigen.",inputSchema=new {type="object",properties=new {path=new {type="string",description="Relativ zum Projektordner; Standard: ."}},additionalProperties=false}},

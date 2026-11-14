@@ -56,12 +56,24 @@ try{
  Check(fetches==before,"Daily check does not repeat within 24 hours");
  File.Delete(Path.Combine(data,"integrated-viewer.json"));var reset=Make();reset.Tick();await Task.Delay(50);
  Check(fetches==before+1,"First run checks once");
- var script=Relaunch.Script(4242,@"C:\Apps\Pi Relay's Test\release\PiRelay.exe");
- var parse=new System.Diagnostics.ProcessStartInfo("powershell.exe"){UseShellExecute=false,RedirectStandardOutput=true,CreateNoWindow=true};
- foreach(var a in new[]{"-NoProfile","-NonInteractive","-Command","$e=$null;$t=$null;$ast=[System.Management.Automation.Language.Parser]::ParseInput($env:PI_RELAY_SCRIPT,[ref]$t,[ref]$e);$e.Count;($ast.FindAll({param($n)$n -is [System.Management.Automation.Language.StringConstantExpressionAst]},$true)|ForEach-Object Value) -join '|'"})parse.ArgumentList.Add(a);
+ // Relaunch: the path (with ASCII and typographic quotes) travels only in the environment; the script
+ // text contains no path, parses cleanly, and PowerShell comes from System32.
+ var oddPath=@"C:\Apps\O’Brien's Pi ‘Relay’\release\PiRelay.exe";var relaunch=Relaunch.Info(4242,oddPath);
+ var encoded=relaunch.ArgumentList[relaunch.ArgumentList.IndexOf("-EncodedCommand")+1];var script=System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
+ Check(Path.IsPathRooted(relaunch.FileName)&&relaunch.FileName.StartsWith(Environment.SystemDirectory,StringComparison.OrdinalIgnoreCase)&&File.Exists(relaunch.FileName),"PowerShell is started from System32: "+relaunch.FileName);
+ Check(relaunch.Environment[Relaunch.ExeVariable]==oddPath&&!script.Contains("Brien")&&script.Contains("$env:"+Relaunch.ExeVariable)&&script.Contains("Wait-Process -Id 4242"),"Path only in the environment: "+script);
+ var parse=new System.Diagnostics.ProcessStartInfo(Relaunch.PowerShell){UseShellExecute=false,RedirectStandardOutput=true,CreateNoWindow=true};
+ foreach(var a in new[]{"-NoProfile","-NonInteractive","-Command","$e=$null;$t=$null;$ast=[System.Management.Automation.Language.Parser]::ParseInput($env:PI_RELAY_SCRIPT,[ref]$t,[ref]$e);$e.Count"})parse.ArgumentList.Add(a);
  parse.Environment["PI_RELAY_SCRIPT"]=script;
- using(var ps=System.Diagnostics.Process.Start(parse)!){var output=ps.StandardOutput.ReadToEnd().Split('\n',StringSplitOptions.TrimEntries);ps.WaitForExit();
-  Check(output[0]=="0"&&output[1].Contains(@"C:\Apps\Pi Relay's Test\release\PiRelay.exe")&&script.Contains("Wait-Process -Id 4242"),"Relaunch script parses, waits for this process and keeps the exact path: "+string.Join(" / ",output));}
+ using(var ps=System.Diagnostics.Process.Start(parse)!){var output=ps.StandardOutput.ReadToEnd().Trim();ps.WaitForExit();Check(output=="0","Relaunch script parses without errors: "+output);}
+ // External viewer port: only the process that opened the connection is recognised, not others.
+ {var listener=new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback,0);listener.Start();var listenPort=((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+  using var client=new System.Net.Sockets.TcpClient();await client.ConnectAsync(System.Net.IPAddress.Loopback,listenPort);using var accepted=await listener.AcceptTcpClientAsync();
+  var peer=(System.Net.IPEndPoint)accepted.Client.RemoteEndPoint!;
+  Check(LoopbackPeer.OwnerProcessId(peer,listenPort)==Environment.ProcessId,"The connecting process is identified");
+  Check(LoopbackPeer.IsFrom(peer,listenPort,Environment.ProcessPath!)&&!LoopbackPeer.IsFrom(peer,listenPort,Path.Combine(Environment.SystemDirectory,"notepad.exe")),"Only the expected viewer executable is accepted");
+  {var shortName=new System.Text.StringBuilder(1024);if(GetShortPathName(Environment.ProcessPath!,shortName,shortName.Capacity)>0&&shortName.ToString()!=Environment.ProcessPath)Check(LoopbackPeer.IsFrom(peer,listenPort,shortName.ToString()),"Short 8.3 spelling of the viewer path is accepted too");}
+  listener.Stop();}
  // Own pictures: decoded, downscaled to <=1600 px, re-encoded as PNG; garbage and unknown slots are refused.
  var iconStore=new IconStore(Path.Combine(sandbox,"data"));var big=Path.Combine(sandbox,"big.jpg");
  using(var bmp=new System.Drawing.Bitmap(3200,1600)){bmp.Save(big,System.Drawing.Imaging.ImageFormat.Jpeg);}
@@ -108,5 +120,6 @@ try{
  var applied=SshHostEdit.Apply(ssh,"192.168.1.50","192.168.1.61");
  Check(applied==(2,2)&&File.ReadAllText(Path.Combine(ssh,"config"))==moved&&Directory.GetFiles(ssh,"*.bak-pirelay-*").Length==2,"Apply rewrites in place with backups");
  try{SshHostEdit.Apply(ssh,"10.0.0.9","10.0.0.10");Check(false,"Unknown old host must fail");}catch(InvalidOperationException){}
- Console.WriteLine("PASS: own pictures (bounded PNG, refusals, reset), tray click phases, reachability (ping only, 2-miss debounce, SSH overrides), wait for a restarting Pi (SSH port, steady ping, limit, cancel), Pi address edit (both aliases, comments/other hosts untouched, keys carried, no overwrite, input validation, backups), relaunch through Explorer after exit (quoted path), stable dist-tag only, offline is not current, single notice, persisted skip/restore, later release reappears, no build without project or for stale version, only tested newer builds are activatable, daily check cadence. No network or process start.");
+ Console.WriteLine("PASS: relaunch path only via environment + System32 PowerShell, viewer port bound to the launched viewer, own pictures (bounded PNG, refusals, reset), tray click phases, reachability (ping only, 2-miss debounce, SSH overrides), wait for a restarting Pi (SSH port, steady ping, limit, cancel), Pi address edit (both aliases, comments/other hosts untouched, keys carried, no overwrite, input validation, backups), relaunch through Explorer after exit (quoted path), stable dist-tag only, offline is not current, single notice, persisted skip/restore, later release reappears, no build without project or for stale version, only tested newer builds are activatable, daily check cadence. No network or process start.");
 }finally{try{Directory.Delete(sandbox,true);}catch{}}
+[System.Runtime.InteropServices.DllImport("kernel32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetShortPathName(string longPath,System.Text.StringBuilder shortPath,int size);

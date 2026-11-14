@@ -8,6 +8,21 @@ def resolve_path(root, value):
     if not p.is_relative_to(root): raise PermissionError('Pfad liegt außerhalb des freigegebenen Projektordners')
     return p
 
+# Writing these can lead to commands running later (Git hooks/config, SSH keys, shell and desktop
+# start-up files). Without the command permission an agent may not change them.
+GUARDED_PARTS = {'.git', '.ssh', '.gnupg'}
+GUARDED_NAMES = {'.bashrc', '.bash_profile', '.bash_login', '.bash_logout', '.profile', '.zshrc', '.zprofile',
+                 '.zshenv', '.zlogin', '.xprofile', '.xsessionrc', '.xinitrc', '.pam_environment', '.gitconfig'}
+GUARDED_CONFIG = {'autostart', 'systemd', 'environment.d'}
+
+def guard_write(config, p):
+    if config.get('allowCommands', False): return
+    parts = p.parts
+    config_dirs = any(parts[i] == '.config' and parts[i + 1] in GUARDED_CONFIG for i in range(len(parts) - 1))
+    if GUARDED_PARTS & set(parts) or p.name in GUARDED_NAMES or config_dirs:
+        raise PermissionError('Diese Datei kann Befehle auslösen (Git, SSH, Shell- oder Desktop-Start). '
+                              'Ändern nur, wenn auch „Befehle ausführen“ freigegeben ist.')
+
 def perform(config, request):
     root = Path(config['root']).resolve()
     if not root.is_dir(): raise ValueError('Projektordner existiert nicht')
@@ -22,6 +37,7 @@ def perform(config, request):
     if op == 'write':
         if not config.get('allowWrite', False): raise PermissionError('Dateiänderungen sind nicht freigegeben')
         p, content = resolve_path(root, args['path']), args['content']
+        guard_write(config, p)
         if len(content.encode('utf-8')) > 1048576: raise ValueError('Inhalt ist größer als 1 MiB')
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding='utf-8')
@@ -112,6 +128,32 @@ def screen_info(os_release='/etc/os-release', proc='/proc'):
     return {'os': system, 'host': socket.gethostname(), 'server': vnc_server_name(proc)}
 
 VNC_SERVERS = {'x11vnc': ('x11vnc', 'x11vnc'), 'wayvnc': ('WayVNC', 'wayvnc')}
+
+def desktop_uids(sessions='/run/systemd/sessions'):
+    uids = set()
+    try: entries = list(Path(sessions).iterdir())
+    except OSError: return uids
+    for entry in entries:
+        try: fields = dict(line.split('=', 1) for line in entry.read_text().splitlines() if '=' in line)
+        except OSError: continue
+        if fields.get('TYPE') in ('x11', 'wayland', 'mir') and fields.get('UID', '').isdigit(): uids.add(int(fields['UID']))
+    return uids
+
+# Port 5900 is unprivileged: another account on the Pi could bind it before the real VNC server and
+# would then receive keystrokes and the shared clipboard. Refuse listeners owned by anyone other than
+# this user, root or a user with a graphical session.
+def vnc_listener_check(port=5900, net='/proc/net', sessions='/run/systemd/sessions'):
+    owners = set()
+    for table in ('tcp', 'tcp6'):
+        try: lines = Path(net, table).read_text().splitlines()[1:]
+        except OSError: continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 8 or parts[3] != '0A' or int(parts[1].rsplit(':', 1)[1], 16) != port: continue
+            owners.add(int(parts[7]))
+    foreign = sorted(owners - ({os.getuid(), 0} | desktop_uids(sessions))) if hasattr(os, 'getuid') else []
+    if foreign:
+        raise PermissionError('VNC-Port %d gehört einem fremden Benutzer (uid %s) – Verbindung aus Sicherheitsgründen abgelehnt.' % (port, ', '.join(map(str, foreign))))
 
 def vnc_server_name(proc='/proc'):
     try: entries = list(Path(proc).iterdir())
@@ -278,6 +320,7 @@ class Broker:
             return {}
         if op == 'tcp_open':
             # Only the Pi's own VNC endpoint; never an arbitrary network proxy.
+            vnc_listener_check()
             # Nothing listening yet (desktop still logging in): a fixed message the app can wait on.
             try: sock = socket.create_connection(('127.0.0.1', 5900), timeout=8)
             except ConnectionRefusedError: raise ConnectionError('VNC-Server auf dem Pi nicht aktiv (127.0.0.1:5900)') from None

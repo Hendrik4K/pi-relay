@@ -51,7 +51,7 @@ function mockHost(){
    if(m.action==='screenOpen'){vnc.opens++;vnc.state='version';vnc.buffer=new Uint8Array(0);setTimeout(()=>{deliver({type:'screenOpened'});reply([...'RFB 003.008\n'].map(c=>c.charCodeAt(0)));},5);}
    if(m.action==='screenSend'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const all=new Uint8Array(vnc.buffer.length+chunk.length);all.set(vnc.buffer);all.set(chunk,vnc.buffer.length);vnc.buffer=all;pump();}
    if(m.action==='screenUpload'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const prev=(window.__uploads||={})[m.token]||new Uint8Array(0);const all=new Uint8Array(prev.length+chunk.length);all.set(prev);all.set(chunk,prev.length);window.__uploads[m.token]=all;(window.__uploadChunks||=[]).push(m.offset);setTimeout(()=>deliver({type:'screenUploadResult',id:m.id,ok:true,result:m.final?{path:'/home/pi/Desktop/'+m.name,size:all.length}:{size:all.length}}),5);}
-   if(m.action==='screenInfo')setTimeout(()=>deliver({type:'screenInfo',info:{os:'Raspberry Pi OS Trixie',host:'Raspi5',server:'x11vnc'}}),0);
+   if(m.action==='screenInfo')setTimeout(()=>deliver({type:'screenInfo',info:{os:'Raspberry Pi OS Trixie',host:'raspberrypi',server:'x11vnc'}}),0);
    if(m.action==='micStart')setTimeout(()=>deliver(window.__micFails?{type:'micState',state:'error',message:'Mikrofon-Empfänger auf dem Pi ist nicht bereit.'}:{type:'micState',state:'on'}),0);
    if(m.action==='micStop'&&!m.quiet)setTimeout(()=>deliver({type:'micState',state:'off'}),0);
    if(m.action==='screenDisconnect')vnc.state='off';
@@ -90,7 +90,7 @@ function mockHost(){
   // After connecting, the 1000x700 window (654 px tall canvas area) shows bars; the window is asked to shrink to 4:3.
   assert.equal(await page.locator('.screen-footnote').count(),0,'No bottom info bar');
   assert((await page.locator('.screen-title').getAttribute('title')).includes('Pi Relay 0.4.0'),'Version info lives in the title tooltip');
-  await page.locator('.screen-host',{hasText:'Raspi5'}).waitFor();
+  await page.locator('.screen-host',{hasText:'raspberrypi'}).waitFor();
   assert.equal(await page.locator('.screen-os').innerText(),'OS Trixie','The Pi context is implied: no "Raspberry Pi" prefix');
   assert(!(await page.locator('.screen-title').innerText()).includes('MasterControl'),'Access name only in the window title');
   assert.equal((await page.locator('.screen-status').innerText()).trim(),'Verbunden','Status shows only the state');

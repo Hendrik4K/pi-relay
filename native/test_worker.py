@@ -101,4 +101,25 @@ class WorkerTests(unittest.TestCase):
    with self.assertRaises(ValueError):feed.send('AA==')
   self.assertFalse(worker.MicFeed('/nonexistent/empfang').status()['ready'])
 
+ def test_write_guard_without_command_permission(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);config={'root':d,'allowWrite':True,'allowCommands':False}
+   for path in ('.git/config','.ssh/authorized_keys','.bashrc','sub/.profile','.config/autostart/x.desktop','.config/systemd/user/x.service'):
+    with self.assertRaises(PermissionError,msg=path):worker.perform(config,{'op':'write','args':{'path':path,'content':'x'}})
+   worker.perform(config,{'op':'write','args':{'path':'src/app.py','content':'print(1)'}});self.assertEqual((root/'src'/'app.py').read_text(),'print(1)')
+   config['allowCommands']=True;worker.perform(config,{'op':'write','args':{'path':'.git/info/exclude','content':'x'}})
+
+ @unittest.skipIf(not hasattr(os,'getuid'),'POSIX uids')
+ def test_vnc_listener_owned_by_foreign_user_is_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);net=root/'net';net.mkdir();sessions=root/'sessions';sessions.mkdir()
+   head='  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n'
+   def listen(uid):(net/'tcp').write_text(head+'   0: 0100007F:170C 00000000:0000 0A 00000000:00000000 00:00000000 00000000 %5d        0 1\n'%uid)
+   listen(os.getuid());worker.vnc_listener_check(5900,net,sessions)
+   listen(0);worker.vnc_listener_check(5900,net,sessions)
+   listen(4242)
+   with self.assertRaises(PermissionError):worker.vnc_listener_check(5900,net,sessions)
+   (sessions/'c2').write_text('UID=4242\nTYPE=x11\nSTATE=active\n');worker.vnc_listener_check(5900,net,sessions)
+   (net/'tcp').write_text(head);worker.vnc_listener_check(5900,net,sessions)
+
 if __name__=='__main__':unittest.main()
