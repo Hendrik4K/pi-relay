@@ -42,6 +42,7 @@ public sealed class RelayWindow : Window {
  private readonly IntegratedViewer integratedViewer;
  private readonly HostReachability reachability;
  private readonly Dictionary<string,CancellationTokenSource> waitingFor=new();
+ private readonly Dictionary<string,JsonElement> vncServers=new(StringComparer.OrdinalIgnoreCase);
  private readonly IconStore icons;
  private int reachTicks;
  private readonly List<EventRow> events=[];
@@ -143,7 +144,7 @@ public sealed class RelayWindow : Window {
  private void CollapsePanel(){if(!PanelMotion.MayCollapse(Phase))return;if(!ready||!saved.Settings.Motion){CompleteHide();return;}if(resizeTimer.IsEnabled){PositionPanel();UpdateLayout();ApplyOutline();}collapsing=true;hideToken++;hideClipFrames=0;hideMaxOffset=0;hideClipsApplied=true;web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="collapse",token=hideToken}));collapseTimer.Start();}
  private void CompleteHide(){collapseTimer.Stop();resizeTimer.Stop();collapsing=false;if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="hidden"}));Hide();PositionPanel();ApplyOutline();Opacity=1;WriteStatus();}
  private void WriteStatus(){File.WriteAllText(Path.Combine(dataFolder,"status.json"),Json.Encode(new{ready,pid=Environment.ProcessId,started,profiles=profiles.Count,keys=keys.Count,panelVisible=IsVisible,windowState=WindowState.ToString(),rounded,outline,panelTargetHeight,resizing=resizeTimer.IsEnabled,hideClipFrames,hideMaxOffset,hideClipsApplied,bottom=Top+ActualHeight,workAreaBottom=SystemParameters.WorkArea.Bottom,width=ActualWidth,height=ActualHeight,webWidth=web.ActualWidth,webHeight=web.ActualHeight,surface}));}
- private object Snapshot()=>new {version=typeof(RelayWindow).Assembly.GetName().Version?.ToString(3),screens=screens.Keys,icons=icons.Snapshot(),devices=saved.Devices,reachability=reachability.Snapshot(),integrated=integratedViewer.Snapshot(connections.Values.Any(c=>c.IsReady)),profiles,keys,settings=saved.Settings,panel=new{visible=IsVisible&&Opacity>0,collapsing,revealing},viewer=viewerUpdates.Snapshot(),agents=agents.ToDictionary(x=>x.Key,x=>new{saved.Agents[x.Key].Alias,saved.Agents[x.Key].Root,saved.Agents[x.Key].AllowCommands,saved.Agents[x.Key].AllowWrite,state=x.Value.VisibleState}),events=events.TakeLast(80)};
+ private object Snapshot()=>new {version=typeof(RelayWindow).Assembly.GetName().Version?.ToString(3),screens=screens.Keys,icons=icons.Snapshot(),devices=saved.Devices,reachability=reachability.Snapshot(),vncServers,integrated=integratedViewer.Snapshot(connections.Values.Any(c=>c.IsReady)),profiles,keys,settings=saved.Settings,panel=new{visible=IsVisible&&Opacity>0,collapsing,revealing},viewer=viewerUpdates.Snapshot(),agents=agents.ToDictionary(x=>x.Key,x=>new{saved.Agents[x.Key].Alias,saved.Agents[x.Key].Root,saved.Agents[x.Key].AllowCommands,saved.Agents[x.Key].AllowWrite,state=x.Value.VisibleState}),events=events.TakeLast(80)};
  private void Push(){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(Push));return;}foreach(var profile in profiles){var connection=connections.GetValueOrDefault(profile.Alias);profile.State=waitingFor.ContainsKey(profile.Alias)?"waiting":connection?.State=="ready"?"connected":connection?.State??"disconnected";}if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="state",data=Snapshot()}));UpdateIcon();}
  private void Notice(string message){if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="notice",message}));}
  private void Log(string message){events.Add(new(DateTime.Now.ToString("HH:mm:ss"),message));if(events.Count>200)events.RemoveAt(0);Push();}
@@ -176,6 +177,8 @@ public sealed class RelayWindow : Window {
   // The switch in "Externer Viewer" decides what the main screen action opens.
   case "connectScreen":if(saved.Settings.ExternalViewer)await OpenExternalScreen(r.GetProperty("alias").GetString()??"");else OpenScreen(r.GetProperty("alias").GetString()??"");break;
   case "checkIntegratedViewer":await integratedViewer.Check();break;
+  // Which VNC server the Pi runs, its version and listen scope: read-only, existing connection only.
+  case "checkVncServer":{var vncAlias=r.GetProperty("alias").GetString()??"";if(!connections.TryGetValue(vncAlias,out var vncSession)||!vncSession.IsReady)throw new InvalidOperationException("Zuerst mit dem Pi verbinden.");var vncHost=profiles.First(p=>p.Alias==vncAlias).Hostname;vncServers[vncHost]=await vncSession.Request("vnc_server_info");Push();break;}
   case "skipIntegratedViewer":integratedViewer.Skip(r.GetProperty("version").GetString()??"");break;
   case "restoreIntegratedViewer":integratedViewer.Restore();break;
   case "buildIntegratedViewer":integratedViewer.StartBuild(r.GetProperty("version").GetString()??"");Log("Integrierter Viewer: Update-Build im PowerShell-Fenster gestartet");break;

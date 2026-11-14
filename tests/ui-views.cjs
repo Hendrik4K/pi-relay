@@ -49,7 +49,8 @@ const {chromium}=load('playwright');
   assert.equal(await page.locator('.device-title h2').innerText(),'Raspberry Pi 5');
   // Drive first; a pointer entry from the left turns it to RAM, an entry from the right turns it back.
   assert.equal(await page.locator('.spec-flip').getAttribute('data-face'),'front');
-  assert.equal(await page.locator('.spec-front').innerText(),'128 GB USB');assert.equal(await page.locator('.spec-back').innerText(),'16 GB RAM');
+  assert.equal(await page.locator('.spec-front').innerText(),'128GB USB');assert.equal(await page.locator('.spec-back').innerText(),'16GB RAM');
+  {const [num,unit,title]=await page.evaluate(()=>[document.querySelector('.spec-back .spec-num'),document.querySelector('.spec-back .spec-unit'),document.querySelector('.device-copy h2')].map(e=>parseFloat(getComputedStyle(e).fontSize)));assert(Math.abs(num-title)<0.6&&Math.abs(unit-title*0.72)<0.6,'Spec number matches the heading, unit at lowercase height: '+[num,unit,title]);}
   const flip=await page.locator('.spec-flip').boundingBox();
   await page.mouse.move(flip.x-10,flip.y+flip.height/2);await page.mouse.move(flip.x+3,flip.y+flip.height/2);await page.waitForTimeout(600);
   assert.equal(await page.locator('.spec-flip').getAttribute('data-face'),'back','Left entry shows RAM');
@@ -156,6 +157,7 @@ const {chromium}=load('playwright');
   assert.equal(await page.getByRole('dialog').count(),0);
   assert.equal(await page.locator('header .vnc-badge').innerText(),'noVNC','Integrated viewer is the default badge');
   assert(await page.locator('.view-screen').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'Screen view has no scrolling content');
+  assert.equal(await page.locator('.vnc-server-card code').innerText(),'x11vnc 0.9.17');
   assert.equal(await page.getByRole('button',{name:'Bildschirm öffnen',exact:true}).isEnabled(),true);
   await save('screen');
   const screen=await page.locator('.relay').boundingBox();assert.equal(screen.width,panel.width);assert.equal(screen.height,panel.height);

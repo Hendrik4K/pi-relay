@@ -74,4 +74,18 @@ class WorkerTests(unittest.TestCase):
    (root/'42'/'comm').write_text('wayvnc\n');self.assertEqual(worker.screen_info(root/'os-release',root)['server'],'WayVNC')
    (root/'42'/'comm').write_text('sshd\n');self.assertEqual(worker.screen_info(root/'nothing',root)['server'],'')
 
+ def test_vnc_server_info_reads_versions_and_listen_scope(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);(root/'42').mkdir();(root/'42'/'comm').write_text('x11vnc\n');net=root/'net';net.mkdir()
+   head='  sl  local_address rem_address   st\n'
+   (net/'tcp').write_text(head+'   0: 0100007F:170C 00000000:0000 0A\n   1: 00000000:0016 00000000:0000 0A\n')
+   (net/'tcp6').write_text(head+'   0: 00000000000000000000000001000000:170C 00000000000000000000000000000000:0000 0A\n')
+   answers={'dpkg-query':'0.9.17-1','apt-cache':'x11vnc:\n  Installed: 0.9.17-1\n  Candidate: 0.9.17-2\n'}
+   info=worker.vnc_server_info(root,net,lambda *c:answers[c[0]])
+   self.assertEqual((info['server'],info['installed'],info['candidate'],info['update']),('x11vnc','0.9.17-1','0.9.17-2',True))
+   self.assertEqual(info['addresses'],['127.0.0.1','::1']);self.assertTrue(info['localOnly'])
+   (net/'tcp').write_text(head+'   0: 00000000:170C 00000000:0000 0A\n')
+   self.assertFalse(worker.vnc_server_info(root,net,lambda *c:answers[c[0]])['localOnly'])
+   answers['apt-cache']='  Candidate: 0.9.17-1\n';self.assertFalse(worker.vnc_server_info(root,net,lambda *c:answers[c[0]])['update'])
+
 if __name__=='__main__':unittest.main()

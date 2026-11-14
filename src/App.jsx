@@ -2,13 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GearSix, Terminal, Key, CaretDown, CaretRight, Minus, Info, X, ArrowSquareOut, Plus, Copy, Check, Power, FolderOpen, Plug, ArrowClockwise, Pause, Monitor, PencilSimple } from '@phosphor-icons/react';
 import './relay.css';
 import { ViewerPanel } from './ViewerPanel.jsx';
-import { IntegratedViewerPanel } from './IntegratedViewerPanel.jsx';
+import { IntegratedViewerPanel, VncServerCard } from './IntegratedViewerPanel.jsx';
 
 const native = Boolean(window.chrome?.webview);
 const designMode = !native && new URLSearchParams(location.search).has('design');
 const initial = { profiles:[{alias:'MasterControl',hostname:'192.168.1.50',user:'pi',state:designMode?'connected':'disconnected',keyType:'Hardware-Schlüssel'},{alias:'BackDoor',hostname:'192.168.1.50',user:'pi',state:'disconnected',keyType:'Hardware-Schlüssel'}], keys:[], viewer:{provider:'',installed:'',latest:null,pending:null,previous:null,busy:false,error:'',ready:false,updateAvailable:false}, settings:{managedViewer:true,externalViewer:false,minimized:designMode,autostart:false,motion:true}, agents:{codex:{alias:'',root:'',allowCommands:false,allowWrite:false,state:designMode?'active':'disconnected'},claude:{alias:'',root:'',allowCommands:false,allowWrite:false,state:designMode?'active':'disconnected'}}, events:[] };
 if(designMode&&new URLSearchParams(location.search).has('viewer-update'))initial.viewer={...initial.viewer,provider:'tigervnc',installed:'1.16.1',latest:'1.16.2',previous:'1.16.0',ready:true,updateAvailable:true,lastChecked:'2026-11-01T12:00:00Z'};
 if(designMode)initial.integrated={appVersion:'0.4.0',installed:'1.7.0',latest:'1.7.0',updateAvailable:false,skipped:false,lastChecked:'2026-11-12T05:00:00Z',error:'',busy:false,canBuild:true,building:false,staged:null,sshActive:true};
+if(designMode)initial.vncServers={'192.168.1.50':{server:'x11vnc',package:'x11vnc',installed:'0.9.17-1',candidate:new URLSearchParams(location.search).has('vnc-update')?'0.9.17-2':'0.9.17-1',update:new URLSearchParams(location.search).has('vnc-update'),addresses:['127.0.0.1','::1'],localOnly:true}};
 if(designMode&&new URLSearchParams(location.search).has('novnc-update'))initial.integrated={...initial.integrated,latest:'1.8.0',updateAvailable:true};
 if(designMode)initial.devices={'192.168.1.50':{model:'Raspberry Pi 5 Model B Rev 1.1',memoryBytes:16*2**30*0.985,storageBytes:125e9,storageKind:'USB'}};
 if(designMode&&new URLSearchParams(location.search).has('pi-offline')){initial.profiles=initial.profiles.map(p=>({...p,state:'disconnected'}));initial.reachability={'192.168.1.50':'offline'};}
@@ -106,11 +107,17 @@ function storageLabel(bytes,kind){
 
 // Drive on the front, RAM on the back: each pointer entry turns the label half a turn around its
 // vertical axis, in the direction the pointer came from. Both faces share the wider face's width.
+// "16 GB RAM": the number as tall as the heading's "5", the unit glued to it at lowercase height, then the kind.
+function SpecText({text}) {
+ const m=/^([\d.,]+)\s?(GB|TB)(?:\s(.+))?$/.exec(text||'');
+ if(!m)return text;
+ return <><span className="spec-num">{m[1]}</span><span className="spec-unit">{m[2]}</span>{m[3]&&<> <span className="spec-unit">{m[3]}</span></>}</>;
+}
 function SpecFlip({front,back}) {
  const [angle,setAngle]=useState(0);
  function turn(event){const box=event.currentTarget.getBoundingClientRect();setAngle(a=>a+(event.clientX<=box.left+box.width/2?1:-1)*180);}
  return <span className="spec-flip" onPointerEnter={turn} data-face={Math.abs(Math.round(angle/180))%2?'back':'front'} aria-label={front+', '+back}>
-  <span className="spec-flip-rotor" style={{transform:'rotateY('+angle+'deg)'}}><span className="spec-chip spec-face spec-front" aria-hidden="true">{front}</span><span className="spec-chip spec-face spec-back" aria-hidden="true">{back}</span></span>
+  <span className="spec-flip-rotor" style={{transform:'rotateY('+angle+'deg)'}}><span className="spec-chip spec-face spec-front" aria-hidden="true"><SpecText text={front}/></span><span className="spec-chip spec-face spec-back" aria-hidden="true"><SpecText text={back}/></span></span>
  </span>;
 }
 
@@ -175,6 +182,10 @@ export function App() {
  // Network ping only (no SSH): the Pi is shut down or not on the network.
  const offline=!connected&&data.reachability?.[profile?.hostname]==='offline';
  const facts=data.devices?.[profile?.hostname];
+ // The facts beside the heading follow its responsive size.
+ const titleRow=useRef();
+ useLayoutEffect(()=>{const row=titleRow.current,h2=row?.querySelector('h2');if(!h2)return;const sync=()=>row.style.setProperty('--title-size',getComputedStyle(h2).fontSize);sync();const watch=new ResizeObserver(sync);watch.observe(h2);return()=>watch.disconnect();},[view]);
+ useEffect(()=>{if(native&&view==='screen'&&connected&&profile&&!data.vncServers?.[profile.hostname])call('checkVncServer',{alias:profile.alias});},[view,connected,profile?.hostname]);
  const localProfiles=data.profiles.filter(p=>p.hostname===profile?.hostname);
  const backupProfiles=localProfiles.filter(p=>p.alias.toLowerCase()==='backdoor');
  const primaryProfiles=localProfiles.filter(p=>p.alias.toLowerCase()!=='backdoor');
@@ -184,6 +195,7 @@ export function App() {
   else if(action==='skipViewerUpdate')setData(d=>({...d,viewer:{...d.viewer,skipped:true}}));
   else if(action==='restoreViewerUpdate')setData(d=>({...d,viewer:{...d.viewer,skipped:false}}));
   else if(action==='saveSettings')setData(d=>({...d,settings:{...d.settings,...payload.settings}}));
+  else if(action==='checkVncServer')notify('Designvorschau: In der Windows-App liest Pi Relay hier Sender und Version vom Pi.');
   else if(action==='cancelWait')setData(d=>({...d,profiles:d.profiles.map(p=>p.state==='waiting'?{...p,state:'disconnected'}:p)}));
   else if(action==='pickIcon')notify('Designvorschau: In der Windows-App öffnet sich hier die Bildauswahl.');
   else if(action==='setHost'){setData(d=>({...d,profiles:d.profiles.map(p=>p.hostname===payload.from?{...p,hostname:payload.to}:p)}));notify('Designvorschau: In der Windows-App wird die SSH-Konfiguration angepasst.');}
@@ -228,7 +240,7 @@ export function App() {
      <div ref={body} className={'view-body view-'+view} key={view}>
       {view==='home'&&<>
     {new Set(data.profiles.map(p=>p.hostname)).size>1&&<select className="device-picker" aria-label="Pi auswählen" value={profile?.hostname} onChange={e=>setSelected(data.profiles.find(p=>p.hostname===e.target.value)?.alias)}>{Array.from(new Set(data.profiles.map(p=>p.hostname))).map(host=><option key={host}>{host}</option>)}</select>}
-    <div className={'device'+(offline?' offline':'')}><IconSlot slot="device" custom={userIcon(data.icons,'device')} call={call}><Asset name="argon-case" src={userIcon(data.icons,'device')} className="case-image" alt="Raspberry Pi"/></IconSlot><div className="device-copy"><div className="device-title"><h2>{boardName(facts?.model)}{new Set(data.profiles.map(p=>p.hostname)).size>1&&profile?' · '+profile.alias:''}</h2>{offline?<span className="spec-chip muted">nicht erreichbar</span>:(()=>{const ram=ramLabel(facts?.memoryBytes),drive=storageLabel(facts?.storageBytes,facts?.storageKind);return ram&&drive?<SpecFlip front={drive} back={ram}/>:(ram||drive)?<span className="spec-chip">{ram||drive}</span>:null;})()}</div><HostAddress host={profile?.hostname} help={help} onSave={to=>call('setHost',{from:profile.hostname,to})}/>{connected?<span className="device-state connected"><i/>Verbunden</span>
+    <div className={'device'+(offline?' offline':'')}><IconSlot slot="device" custom={userIcon(data.icons,'device')} call={call}><Asset name="argon-case" src={userIcon(data.icons,'device')} className="case-image" alt="Raspberry Pi"/></IconSlot><div className="device-copy"><div className="device-title" ref={titleRow}><h2>{boardName(facts?.model)}{new Set(data.profiles.map(p=>p.hostname)).size>1&&profile?' · '+profile.alias:''}</h2>{offline?<span className="spec-chip muted">nicht erreichbar</span>:(()=>{const ram=ramLabel(facts?.memoryBytes),drive=storageLabel(facts?.storageBytes,facts?.storageKind);return ram&&drive?<SpecFlip front={drive} back={ram}/>:(ram||drive)?<span className="spec-chip"><SpecText text={ram||drive}/></span>:null;})()}</div><HostAddress host={profile?.hostname} help={help} onSave={to=>call('setHost',{from:profile.hostname,to})}/>{connected?<span className="device-state connected"><i/>Verbunden</span>
      :waitingProfile?<button className="device-state connectable waiting" title="Warten abbrechen" onClick={()=>call('cancelWait',{alias:waitingProfile.alias})}><i/><span className="state-swap"><span className="state-rest">Wartet auf den Pi …</span><span className="state-hover" aria-hidden="true">Abbrechen</span></span></button>
      :connecting?<span className="device-state connecting"><i/>{keyPrompt?'Schlüssel bestätigen …':'Verbinden …'}</span>
      :<button className={'device-state connectable'+(offline?' offline':'')} disabled={!profile} title={'Mit '+(profile?.alias||'dem Pi')+' verbinden'} onClick={()=>{setSelected(profile.alias);call('connectProfile',{alias:profile.alias});}}><i/><span className="state-swap"><span className="state-rest">{offline?'Aus oder nicht im Netz':'Getrennt'}</span><span className="state-hover" aria-hidden="true">Verbinden</span></span></button>}</div><button className="device-info" aria-label="Verbindungshilfe anzeigen" aria-describedby="connection-help" aria-expanded={help} onPointerEnter={()=>setHelp(true)} onPointerLeave={()=>setHelp(false)} onFocus={()=>setHelp(true)} onBlur={()=>setHelp(false)} onClick={showHelp}><Info size={20}/></button></div>
@@ -248,6 +260,7 @@ export function App() {
      <div className="viewer-current"><div><strong>{externalName}</strong><span className={viewerReady?'viewer-installed':''}>{viewerReady?'aktiv · externe Anwendung':'noch nicht eingerichtet'}</span></div>{v.installed&&data.settings.managedViewer!==false&&<code>{v.installed}</code>}</div>
      <p className="muted-note">{!viewerReady?'Unter „Externer Viewer“ einrichten oder wieder auf den integrierten Viewer umschalten.':externalUpdate?<><span className="external-update">Neue Version {v.latest}</span> Unter „Externer Viewer“ aktualisieren.</>:'Bildschirm öffnen startet diesen Viewer über den bestehenden SSH-Zugang.'}</p>
     </section>:<IntegratedViewerPanel info={data.integrated} call={call}/>}
+    <VncServerCard info={data.vncServers?.[profile?.hostname]} connected={connected} alias={profile?.alias} call={call}/>
    </>}
 
    {view==='external'&&<>

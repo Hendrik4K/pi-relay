@@ -109,16 +109,60 @@ def screen_info(os_release='/etc/os-release', proc='/proc'):
     except OSError: pass
     distro = 'Raspberry Pi OS' if Path('/etc/rpi-issue').exists() else fields.get('NAME', '').split(' GNU/')[0]
     system = (distro + ' ' + fields.get('VERSION_CODENAME', '').capitalize()).strip() or fields.get('PRETTY_NAME', '')
-    servers = {'x11vnc': 'x11vnc', 'wayvnc': 'WayVNC'}
-    server = ''
+    return {'os': system, 'host': socket.gethostname(), 'server': vnc_server_name(proc)}
+
+VNC_SERVERS = {'x11vnc': ('x11vnc', 'x11vnc'), 'wayvnc': ('WayVNC', 'wayvnc')}
+
+def vnc_server_name(proc='/proc'):
     try: entries = list(Path(proc).iterdir())
     except OSError: entries = []
     for entry in entries:
         if not entry.name.isdigit(): continue
         try: name = (entry / 'comm').read_text().strip()
         except OSError: continue
-        if name in servers: server = servers[name]; break
-    return {'os': system, 'host': socket.gethostname(), 'server': server}
+        if name in VNC_SERVERS: return VNC_SERVERS[name][0]
+    return ''
+
+def listen_addresses(port=5900, net='/proc/net'):
+    import ipaddress
+    found = []
+    for table in ('tcp', 'tcp6'):
+        try: lines = Path(net, table).read_text().splitlines()[1:]
+        except OSError: continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 4 or parts[3] != '0A': continue
+            address, _, hexport = parts[1].partition(':')
+            if int(hexport, 16) != port: continue
+            raw = bytes.fromhex(address)
+            raw = b''.join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
+            found.append(str(ipaddress.ip_address(raw)))
+    return found
+
+def is_loopback(address):
+    import ipaddress
+    ip = ipaddress.ip_address(address)
+    return ip.is_loopback or bool(getattr(ip, 'ipv4_mapped', None) and ip.ipv4_mapped.is_loopback)
+
+# Read-only facts for the "VNC-Server auf dem Pi" card: which server runs, its package version,
+# what apt's last package lists offer, and whether it listens on loopback only. Never installs.
+def vnc_server_info(proc='/proc', net='/proc/net', query=None):
+    def run(*command):
+        try: return subprocess.run(command, capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL).stdout
+        except (OSError, subprocess.SubprocessError): return ''
+    query = query or run
+    server = vnc_server_name(proc)
+    package = next((pkg for label, pkg in VNC_SERVERS.values() if label == server), '')
+    installed = candidate = ''
+    if package:
+        installed = query('dpkg-query', '-W', '-f=${Version}', package).strip()
+        for line in query('apt-cache', 'policy', package).splitlines():
+            if line.strip().startswith('Candidate:'): candidate = line.split(':', 1)[1].strip()
+        if candidate == '(none)': candidate = ''
+    addresses = listen_addresses(5900, net)
+    return {'server': server, 'package': package, 'installed': installed, 'candidate': candidate,
+            'update': bool(installed and candidate and candidate != installed),
+            'addresses': addresses, 'localOnly': bool(addresses) and all(is_loopback(a) for a in addresses)}
 
 class Broker:
     def __init__(self, emit):
@@ -209,6 +253,7 @@ class Broker:
             return {}
         if op == 'device_info': return device_info()
         if op == 'screen_info': return screen_info()
+        if op == 'vnc_server_info': return vnc_server_info()
         if op == 'inbox_write': return inbox_write(args)
         if op == 'inbox_cancel': return inbox_cancel(args)
         if op in ('list', 'read', 'write', 'run'): return perform(request['config'], request)

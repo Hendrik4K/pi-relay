@@ -199,3 +199,18 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .screen-mark{position:relative;display:inline-flex;align-items:center;flex-shrink:0;width:26px;height:24px;margin-right:6px;color:#e8dde9}.screen-mark b{position:absolute;right:-8px;bottom:-1px;font:700 6px 'Segoe UI',sans-serif;background:#d5445e;color:#fff;border:1px solid #542235;border-radius:3px;padding:1px 2px;box-shadow:0 1px 3px #0005}
 .screen-title .screen-os{display:inline;font-size:12px;color:#b6a6bc}.screen-title .screen-host{color:#e2577f;font-weight:700}.screen-status .screen-server{font-size:11px;color:#b6a6bc}
 @media(max-width:620px){.screen-title .screen-os,.screen-status .screen-server{display:none}}
+
+/* VNC server on the Pi: compact second card; a non-local listener is flagged red. */
+.vnc-server-card .vnc-scope-warning{color:#ff7a8c}.vnc-server-card .vnc-candidate{color:#e2577f}
+.vnc-update-command{display:flex;align-items:center;gap:8px;margin-top:8px}.vnc-update-command code{flex:1;min-width:0;font-size:11px;padding:6px 8px;border-radius:7px;background:#0005;color:#e8dde9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Board facts sized from the heading (set as --title-size by the renderer): number = heading size,
+   unit and kind at the heading's lowercase height (Segoe caps ~0.7em, x-height ~0.5em). */
+.device-title{align-items:baseline}.device-title .spec-chip{font-size:var(--title-size,19px);font-weight:650;letter-spacing:-.3px;line-height:1.1}
+.device-title .spec-num{font-size:1em}.device-title .spec-unit{font-size:.72em;letter-spacing:0}
+.vnc-server-card{padding:10px 12px;margin-top:0}.vnc-version{display:flex;align-items:center;gap:6px}.vnc-recheck{width:28px;height:28px}.vnc-server-card .vnc-candidate{font-size:11px;font-weight:650}
+.viewer-current>.vnc-version{display:flex;align-items:center;gap:8px}
+.view-screen .integrated-card{margin-bottom:8px}.view-screen .vnc-server-card{margin:0;padding:9px 12px}.vnc-server-card .viewer-current>div{gap:3px}
+.viewer-current>.vnc-version{flex-wrap:nowrap;flex-shrink:0}
+/* Screen view holds the viewer and VNC-server cards within the home panel height. */
+.view-screen .screen-connect{margin-bottom:10px}.view-screen .screen-access-row{margin-bottom:7px}.view-screen .integrated-card{padding:10px 12px;margin-bottom:6px}.view-screen .vnc-server-card{padding:8px 12px}
