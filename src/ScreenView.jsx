@@ -13,6 +13,8 @@ const MIC_WORKLET=`class PiRelayMic extends AudioWorkletProcessor{constructor(){
 process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;for(let i=0;i<ch.length;i++){const v=Math.max(-1,Math.min(1,ch[i]));this.buf[this.n++]=v<0?v*32768:v*32767;const a=v<0?-v:v;if(a>this.peak)this.peak=a;
 if(this.n===960){this.port.postMessage({pcm:this.buf.buffer,level:this.peak},[this.buf.buffer]);this.buf=new Int16Array(960);this.n=0;this.peak=0;}}return true;}}
 registerProcessor('pi-relay-mic',PiRelayMic);`;
+// Level meter in decibels like Wave Link / Windows: -60 dBFS (empty) to 0 dBFS (full).
+const meterScale=peak=>Math.max(0,Math.min(1,(20*Math.log10(Math.max(peak,1e-6))+60)/60));
 const bytesToBase64=buffer=>{const bytes=new Uint8Array(buffer);let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(text);};
 function useMic(flash){
  const [on,setOn]=useState(false),[state,setState]=useState('off'),[level,setLevel]=useState(0),[devices,setDevices]=useState([]);
@@ -196,20 +198,21 @@ export function ScreenView(){
   onDragLeave={e=>{if(!e.relatedTarget)setDragging(false);}}
   onDrop={e=>{e.preventDefault();setDragging(false);const files=[...(e.dataTransfer?.files||[])];if(files.length)uploadFiles(files);}}>
   <header className="screen-toolbar">
-   <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={21}/><b>noVNC</b></span>{meta.os&&<small className="screen-os">{meta.os}</small>}<strong className="screen-host">{meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm'}</strong></span>
-   <span className={'screen-status '+status} role="status"><i/>{labels[status]}{connected&&meta.server&&<small className="screen-server"> · {meta.server}</small>}</span>
+   <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={21}/><b>noVNC</b></span>{meta.os&&<small className="screen-os" title={meta.os}>{meta.os.replace(/^Raspberry Pi\s+/,'')}</small>}<strong className="screen-host">{meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm'}</strong></span>
+   <span className={'screen-status '+status} role="status"><i/><span className="screen-status-text">{labels[status]}{connected&&meta.server&&<small className="screen-server">{meta.server}</small>}</span></span>
    <span className="screen-tools">
+    <span className={'screen-mic'+(mic.on?' on':'')}>
+      <button className="screen-tool mic-toggle" aria-pressed={mic.on} disabled={!connected&&!mic.on} onClick={()=>mic.on?mic.disable():mic.enable()} title={mic.on?(mic.state==='waiting'?'Mikro wartet auf die Verbindung · ausschalten':'Windows-Mikrofon geht an den Pi · ausschalten'):'Windows-Mikrofon an den Pi senden'}><Microphone size={17} weight={mic.on?'fill':'regular'}/>{mic.on&&<i className="mic-dot"/>}<span>Mikro</span></button>
+      {mic.on&&<span className="mic-level" aria-hidden="true"><b style={{transform:'scaleX('+meterScale(mic.level)+')'}}/></span>}
+      <select className="mic-device" aria-label="Mikrofon wählen" value={mic.device} onFocus={mic.list} onChange={e=>mic.choose(e.target.value)}>{!mic.devices.some(d=>d.deviceId===mic.device)&&<option value={mic.device}>{mic.device?'Gemerktes Mikrofon':'Standard-Mikrofon'}</option>}{mic.devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label||'Mikrofon'}</option>)}</select>
+     </span>
     {connected||busy||status==='credentials'?<button className="screen-tool" onClick={disconnect} title="Nur die Bildschirmverbindung trennen; SSH bleibt verbunden"><Plug size={17}/><span>Trennen</span></button>:<button className="screen-tool accent" disabled={!bridge} onClick={connect}><PlugsConnected size={17}/><span>Verbinden</span></button>}
     <label className="screen-quality" title="Bildqualität: höher ist schärfer, braucht aber mehr Bandbreite. Die Auflösung selbst legt der Pi fest."><span>Qualität</span><input type="range" min="0" max="9" step="1" value={quality} aria-label="Bildqualität" onChange={e=>setQuality(Number(e.target.value))}/><output>{quality}</output></label>
     <button className="screen-tool" aria-pressed={scale==='fit'} onClick={()=>setScale(s=>s==='fit'?'native':'fit')} title={scale==='fit'?'An Fenster angepasst · auf Originalgröße wechseln':'Originalgröße 1:1 · an Fenster anpassen'}>{scale==='fit'?<ArrowsIn size={17}/>:<ArrowsOut size={17}/>}<span>{scale==='fit'?'Angepasst':'1:1'}</span></button>
     <span className="screen-clipboard">
      <button className="screen-tool" disabled={!connected} onClick={pasteToPi} title="Text aus der Windows-Zwischenablage an den Pi übergeben"><ClipboardText size={17}/><span>An Pi</span></button>
      <label className="screen-share" aria-label="Zwischenablage teilen" title={clipboardSeen?'Der Pi hat bereits Text gesendet.':'Der Pi sendet erst Text, wenn dort etwas kopiert wird. Nur Text, keine Dateien.'}><input type="checkbox" checked={shareClipboard} onChange={e=>setShareClipboard(e.target.checked)}/><span>Zwischenablage teilen</span></label>
-     <span className={'screen-mic'+(mic.on?' on':'')}>
-      <button className="screen-tool mic-toggle" aria-pressed={mic.on} disabled={!connected&&!mic.on} onClick={()=>mic.on?mic.disable():mic.enable()} title={mic.on?(mic.state==='waiting'?'Mikro wartet auf die Verbindung · ausschalten':'Windows-Mikrofon geht an den Pi · ausschalten'):'Windows-Mikrofon an den Pi senden'}><Microphone size={17} weight={mic.on?'fill':'regular'}/>{mic.on&&<i className="mic-dot"/>}<span>Mikro</span></button>
-      {mic.on&&<span className="mic-level" aria-hidden="true"><b style={{transform:'scaleX('+Math.min(1,mic.level*1.8)+')'}}/></span>}
-      <select className="mic-device" aria-label="Mikrofon wählen" value={mic.device} onFocus={mic.list} onChange={e=>mic.choose(e.target.value)}>{!mic.devices.some(d=>d.deviceId===mic.device)&&<option value={mic.device}>{mic.device?'Gemerktes Mikrofon':'Standard-Mikrofon'}</option>}{mic.devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label||'Mikrofon'}</option>)}</select>
-     </span>
+
     </span>
    </span>
   </header>

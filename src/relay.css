@@ -251,3 +251,13 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
    the BackDoor +/- circle sits correspondingly lower on the line. */
 .session-line.first,.has-backup .session-line.first{height:94.5px}
 .has-backup .backup-toggle,.has-backup .backup-toggle:hover,.has-backup .backup-toggle[aria-expanded=true]{top:-1px}
+/* Ping and answer: the light runs Pi -> access, turns around as soon as it has left the line and runs
+   back to the Pi, then a short pause before the next ping. */
+.session-line.first.live:after{animation:route-ping 4.6s infinite}
+@keyframes route-ping{0%{background-position:100% 100%;animation-timing-function:ease-in}34%{background-position:0% 0%;animation-timing-function:ease-out}68%,100%{background-position:100% 100%}}
+
+/* Viewer status: state with the Pi's VNC server underneath; the dot is centred on both lines. */
+.screen-status-text{display:flex;flex-direction:column;line-height:1.15}.screen-status .screen-server{font-size:10px;color:#b6a6bc}
+.screen-mic{margin-right:4px}
+.screen-title .screen-os{flex-shrink:0}@media(max-width:1150px){.mic-device{max-width:96px}}
+.mic-level{width:46px}

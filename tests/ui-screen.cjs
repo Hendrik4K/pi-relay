@@ -91,9 +91,11 @@ function mockHost(){
   assert.equal(await page.locator('.screen-footnote').count(),0,'No bottom info bar');
   assert((await page.locator('.screen-title').getAttribute('title')).includes('Pi Relay 0.4.0'),'Version info lives in the title tooltip');
   await page.locator('.screen-host',{hasText:'Raspi5'}).waitFor();
-  assert.equal(await page.locator('.screen-os').innerText(),'Raspberry Pi OS Trixie');
+  assert.equal(await page.locator('.screen-os').innerText(),'OS Trixie','The Pi context is implied: no "Raspberry Pi" prefix');
   assert(!(await page.locator('.screen-title').innerText()).includes('MasterControl'),'Access name only in the window title');
   assert((await page.locator('.screen-status').innerText()).includes('x11vnc'),'VNC server shown next to the status');
+  {const [state,server,dot]=await page.evaluate(()=>['.screen-status-text','.screen-server','.screen-status i'].map(q=>document.querySelector(q).getBoundingClientRect()));assert(server.top>=state.top+8,'Server name sits under the state');assert(Math.abs((dot.top+dot.bottom)/2-(state.top+state.bottom)/2)<=1.5,'Dot centred on both lines');}
+  {const mic=await page.locator('.mic-toggle').boundingBox(),trennen=await page.getByRole('button',{name:'Trennen'}).boundingBox();assert(mic.x<trennen.x,'Microphone sits left of Trennen');}
   assert.equal(await page.locator('.screen-host').evaluate(e=>getComputedStyle(e).color),'rgb(226, 87, 127)');
   const firstFit=await page.evaluate(()=>window.__relayMessages.find(m=>m.action==='screenFit'));
   assert(firstFit&&Math.abs(firstFit.dw-(Math.round(654*4/3)-1000))<=1&&firstFit.dh===0,'Initial fit request: '+JSON.stringify(firstFit));
