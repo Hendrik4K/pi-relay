@@ -12,8 +12,9 @@ if(designMode)initial.integrated={appVersion:'0.4.0',installed:'1.7.0',latest:'1
 if(designMode&&new URLSearchParams(location.search).has('novnc-update'))initial.integrated={...initial.integrated,latest:'1.8.0',updateAvailable:true};
 if(designMode)initial.devices={'192.168.1.50':{model:'Raspberry Pi 5 Model B Rev 1.1',memoryBytes:16*2**30*0.985,storageBytes:125e9,storageKind:'USB'}};
 if(designMode&&new URLSearchParams(location.search).has('pi-offline')){initial.profiles=initial.profiles.map(p=>({...p,state:'disconnected'}));initial.reachability={'192.168.1.50':'offline'};}
+if(designMode&&new URLSearchParams(location.search).has('pi-waiting')){initial.profiles=initial.profiles.map((p,i)=>({...p,state:i===0?'waiting':'disconnected'}));initial.reachability={'192.168.1.50':'offline'};}
 const names = {codex:'Codex',claude:'Claude'};
-const stateText = {disconnected:'Getrennt',connecting:'Verbinden …',key:'Schlüssel bestätigen',connected:'Verbunden',ready:'SSH bereit',active:'Verbunden',busy:'Arbeitet',error:'Verbindung prüfen'};
+const stateText = {disconnected:'Getrennt',connecting:'Verbinden …',waiting:'Wartet auf Pi …',key:'Schlüssel bestätigen',connected:'Verbunden',ready:'SSH bereit',active:'Verbunden',busy:'Arbeitet',error:'Verbindung prüfen'};
 
 function request(action,data={}) { if(native) window.chrome.webview.postMessage({action,...data}); }
 // The native panel slides as one piece: the renderer moves the front frame by frame and reports each
@@ -169,6 +170,7 @@ export function App() {
  const viewerReady=data.settings.managedViewer!==false?v.ready:Boolean(data.settings.vncViewer);const externalUpdate=data.settings.managedViewer!==false&&v.installed&&v.updateAvailable&&!v.skipped&&!v.pending;const screenOpen=Boolean(profile&&data.screens?.includes(profile.alias));const useExternal=Boolean(data.settings.externalViewer);const externalName=data.settings.managedViewer===false?'Eigener Viewer':v.provider==='realvnc-classic'?'RealVNC Classic':v.provider==='tigervnc'?'TigerVNC':'Externer Viewer';
  const connected=data.profiles.some(p=>p.hostname===profile?.hostname&&p.state==='connected');
  const connecting=data.profiles.some(p=>p.hostname===profile?.hostname&&['key','connecting'].includes(p.state));
+ const waitingProfile=data.profiles.find(p=>p.hostname===profile?.hostname&&p.state==='waiting');
  const keyPrompt=data.profiles.some(p=>p.hostname===profile?.hostname&&p.state==='key');
  // Network ping only (no SSH): the Pi is shut down or not on the network.
  const offline=!connected&&data.reachability?.[profile?.hostname]==='offline';
@@ -182,6 +184,7 @@ export function App() {
   else if(action==='skipViewerUpdate')setData(d=>({...d,viewer:{...d.viewer,skipped:true}}));
   else if(action==='restoreViewerUpdate')setData(d=>({...d,viewer:{...d.viewer,skipped:false}}));
   else if(action==='saveSettings')setData(d=>({...d,settings:{...d.settings,...payload.settings}}));
+  else if(action==='cancelWait')setData(d=>({...d,profiles:d.profiles.map(p=>p.state==='waiting'?{...p,state:'disconnected'}:p)}));
   else if(action==='pickIcon')notify('Designvorschau: In der Windows-App öffnet sich hier die Bildauswahl.');
   else if(action==='setHost'){setData(d=>({...d,profiles:d.profiles.map(p=>p.hostname===payload.from?{...p,hostname:payload.to}:p)}));notify('Designvorschau: In der Windows-App wird die SSH-Konfiguration angepasst.');}
   else if(['checkIntegratedViewer','skipIntegratedViewer','restoreIntegratedViewer'].includes(action))notify('Designvorschau: Die Updateprüfung läuft in der Windows-App.');
@@ -199,10 +202,10 @@ export function App() {
   <span className={'session-line '+(index===0&&!backup?'first':'')+(backup?' backup-route':'')+(p.state==='connected'?' live':'')}/>
   {hasSwitch&&<span className={'backup-route-stub'+(backupProfiles.some(b=>b.state==='connected')?' live':'')} aria-hidden="true"/>}
   {!backup&&index===0&&backupProfiles.length>0&&<button className="backup-toggle" aria-label={backupOpen?'BackDoor einklappen':'BackDoor ausklappen'} aria-expanded={backupOpen} aria-controls="backup-accesses" title={backupOpen?'Ersatzzugang BackDoor einklappen':'Ersatzzugang BackDoor ausklappen'} onClick={()=>setBackupOpen(open=>!open)}>{backupOpen?<Minus size={11} weight="bold"/>:<Plus size={11} weight="bold"/>}</button>}
-  <button className="session-connect" disabled={['key','connecting'].includes(p.state)} onClick={()=>{setSelected(p.alias);call('connectProfile',{alias:p.alias});}} aria-label={p.alias+(p.state==='connected'?' verbunden':' verbinden')}>
+  <button className="session-connect" disabled={['key','connecting','waiting'].includes(p.state)} onClick={()=>{setSelected(p.alias);call('connectProfile',{alias:p.alias});}} aria-label={p.alias+(p.state==='connected'?' verbunden':' verbinden')}>
    <span className="session-copy"><strong>{p.alias}</strong>{!backup&&index===0&&<span id="connection-help" className={'session-help'+(help?' visible':'')}>Klick verbindet · Bildschirm · Terminal</span>}</span>
   </button>
-  {['key','connecting'].includes(p.state)&&<span className="waiting-dot"/>}
+  {['key','connecting','waiting'].includes(p.state)&&<span className="waiting-dot"/>}
   <button className={'screen-quick'+(data.screens?.includes(p.alias)?' open':'')} title={(data.screens?.includes(p.alias)?'Pi-Bildschirm von ':'Pi-Bildschirm über ')+p.alias+(data.screens?.includes(p.alias)?' anzeigen':' öffnen'+(p.state==='connected'?'':' (verbindet zuerst)'))} aria-label={p.alias+' Pi-Bildschirm öffnen'} onClick={()=>{setSelected(p.alias);call('connectScreen',{alias:p.alias});}}><Monitor size={25}/></button>
   <TerminalAction alias={p.alias} connected={p.state==='connected'} onOpen={()=>call('connectTerminal',{alias:p.alias})}/>
   {p.state==='connected'&&<button className="session-disconnect" title={p.alias+' trennen (auch Agenten und Bildschirm)'} aria-label={p.alias+' trennen'} onClick={()=>call('disconnectProfile',{alias:p.alias})}><X size={16}/></button>}
@@ -226,6 +229,7 @@ export function App() {
       {view==='home'&&<>
     {new Set(data.profiles.map(p=>p.hostname)).size>1&&<select className="device-picker" aria-label="Pi auswählen" value={profile?.hostname} onChange={e=>setSelected(data.profiles.find(p=>p.hostname===e.target.value)?.alias)}>{Array.from(new Set(data.profiles.map(p=>p.hostname))).map(host=><option key={host}>{host}</option>)}</select>}
     <div className={'device'+(offline?' offline':'')}><IconSlot slot="device" custom={userIcon(data.icons,'device')} call={call}><Asset name="argon-case" src={userIcon(data.icons,'device')} className="case-image" alt="Raspberry Pi"/></IconSlot><div className="device-copy"><div className="device-title"><h2>{boardName(facts?.model)}{new Set(data.profiles.map(p=>p.hostname)).size>1&&profile?' · '+profile.alias:''}</h2>{offline?<span className="spec-chip muted">nicht erreichbar</span>:(()=>{const ram=ramLabel(facts?.memoryBytes),drive=storageLabel(facts?.storageBytes,facts?.storageKind);return ram&&drive?<SpecFlip front={drive} back={ram}/>:(ram||drive)?<span className="spec-chip">{ram||drive}</span>:null;})()}</div><HostAddress host={profile?.hostname} help={help} onSave={to=>call('setHost',{from:profile.hostname,to})}/>{connected?<span className="device-state connected"><i/>Verbunden</span>
+     :waitingProfile?<button className="device-state connectable waiting" title="Warten abbrechen" onClick={()=>call('cancelWait',{alias:waitingProfile.alias})}><i/><span className="state-swap"><span className="state-rest">Wartet auf den Pi …</span><span className="state-hover" aria-hidden="true">Abbrechen</span></span></button>
      :connecting?<span className="device-state connecting"><i/>{keyPrompt?'Schlüssel bestätigen …':'Verbinden …'}</span>
      :<button className={'device-state connectable'+(offline?' offline':'')} disabled={!profile} title={'Mit '+(profile?.alias||'dem Pi')+' verbinden'} onClick={()=>{setSelected(profile.alias);call('connectProfile',{alias:profile.alias});}}><i/><span className="state-swap"><span className="state-rest">{offline?'Aus oder nicht im Netz':'Getrennt'}</span><span className="state-hover" aria-hidden="true">Verbinden</span></span></button>}</div><button className="device-info" aria-label="Verbindungshilfe anzeigen" aria-describedby="connection-help" aria-expanded={help} onPointerEnter={()=>setHelp(true)} onPointerLeave={()=>setHelp(false)} onFocus={()=>setHelp(true)} onBlur={()=>setHelp(false)} onClick={showHelp}><Info size={20}/></button></div>
     <div className={'sessions'+(backupOpen?' backup-open':'')} aria-label="SSH-Zugänge">{primaryProfiles.map((p,index)=>sessionRow(p,index))}<div id="backup-accesses" className={'backup-accesses '+(backupOpen?'expanded':'')} inert={!backupOpen} aria-hidden={!backupOpen}><div>{backupProfiles.map((p,index)=>sessionRow(p,index,true))}</div></div></div>

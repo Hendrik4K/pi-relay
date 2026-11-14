@@ -41,6 +41,7 @@ public sealed class RelayWindow : Window {
  private readonly ViewerUpdates viewerUpdates;
  private readonly IntegratedViewer integratedViewer;
  private readonly HostReachability reachability;
+ private readonly Dictionary<string,CancellationTokenSource> waitingFor=new();
  private readonly IconStore icons;
  private int reachTicks;
  private readonly List<EventRow> events=[];
@@ -143,7 +144,7 @@ public sealed class RelayWindow : Window {
  private void CompleteHide(){collapseTimer.Stop();resizeTimer.Stop();collapsing=false;if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="hidden"}));Hide();PositionPanel();ApplyOutline();Opacity=1;WriteStatus();}
  private void WriteStatus(){File.WriteAllText(Path.Combine(dataFolder,"status.json"),Json.Encode(new{ready,pid=Environment.ProcessId,started,profiles=profiles.Count,keys=keys.Count,panelVisible=IsVisible,windowState=WindowState.ToString(),rounded,outline,panelTargetHeight,resizing=resizeTimer.IsEnabled,hideClipFrames,hideMaxOffset,hideClipsApplied,bottom=Top+ActualHeight,workAreaBottom=SystemParameters.WorkArea.Bottom,width=ActualWidth,height=ActualHeight,webWidth=web.ActualWidth,webHeight=web.ActualHeight,surface}));}
  private object Snapshot()=>new {version=typeof(RelayWindow).Assembly.GetName().Version?.ToString(3),screens=screens.Keys,icons=icons.Snapshot(),devices=saved.Devices,reachability=reachability.Snapshot(),integrated=integratedViewer.Snapshot(connections.Values.Any(c=>c.IsReady)),profiles,keys,settings=saved.Settings,panel=new{visible=IsVisible&&Opacity>0,collapsing,revealing},viewer=viewerUpdates.Snapshot(),agents=agents.ToDictionary(x=>x.Key,x=>new{saved.Agents[x.Key].Alias,saved.Agents[x.Key].Root,saved.Agents[x.Key].AllowCommands,saved.Agents[x.Key].AllowWrite,state=x.Value.VisibleState}),events=events.TakeLast(80)};
- private void Push(){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(Push));return;}foreach(var profile in profiles){var connection=connections.GetValueOrDefault(profile.Alias);profile.State=connection?.State=="ready"?"connected":connection?.State??"disconnected";}if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="state",data=Snapshot()}));UpdateIcon();}
+ private void Push(){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(Push));return;}foreach(var profile in profiles){var connection=connections.GetValueOrDefault(profile.Alias);profile.State=waitingFor.ContainsKey(profile.Alias)?"waiting":connection?.State=="ready"?"connected":connection?.State??"disconnected";}if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="state",data=Snapshot()}));UpdateIcon();}
  private void Notice(string message){if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="notice",message}));}
  private void Log(string message){events.Add(new(DateTime.Now.ToString("HH:mm:ss"),message));if(events.Count>200)events.RemoveAt(0);Push();}
  private void Save(){var file=Path.Combine(dataFolder,"settings.json");var temp=file+".tmp";File.WriteAllText(temp,Json.Encode(saved));File.Move(temp,file,true);}
@@ -160,6 +161,7 @@ public sealed class RelayWindow : Window {
   case "quit":Quit();break;
   case "refresh":await Refresh();break;
   case "connectProfile":await EnsureConnection(r.GetProperty("alias").GetString()??"");break;
+  case "cancelWait":if(waitingFor.TryGetValue(r.GetProperty("alias").GetString()??"",out var waitCancel))waitCancel.Cancel();break;
   case "connectTerminal":ConnectTerminal(r.GetProperty("alias").GetString()??"");break;
   case "disconnectProfile":var alias=r.GetProperty("alias").GetString()??"";if(connections.TryGetValue(alias,out var connection))connection.Dispose();if(terminals.Remove(alias,out var terminal))terminal.Finish();Log(alias+": SSH-Verbindung getrennt");break;
   case "pickVncViewer":var viewer=new Microsoft.Win32.OpenFileDialog{Title="VNC Viewer auswählen",Filter="VNC Viewer (*.exe)|*.exe"};if(viewer.ShowDialog(this)==true){saved.Settings.VncViewer=viewer.FileName;saved.Settings.ManagedViewer=false;Save();Push();}break;
@@ -209,9 +211,25 @@ public sealed class RelayWindow : Window {
   if(!connections.TryGetValue(alias,out var session)){session=new SharedSession(alias,()=>Dispatcher.BeginInvoke(new Action(Push)));connections[alias]=session;}
   if(session.IsReady){var host=profiles.First(p=>p.Alias==alias).Hostname;if(!saved.Devices.ContainsKey(host))_=LoadDeviceFacts(alias,session);return session;}
   if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
+  var hostname=profiles.First(p=>p.Alias==alias).Hostname;var waited=false;
+  if(reachability.Snapshot().GetValueOrDefault(hostname)=="offline"){await WaitForPi(alias,hostname);waited=true;}
+  try{return await Authenticate(alias,session);}
+  // Pi still restarting: wait until it answers, then authenticate exactly once more.
+  catch(Exception e) when(!waited&&(SharedSession.Unreachable(e.Message)||SharedSession.Unreachable(session.LastError))){await WaitForPi(alias,hostname);return await Authenticate(alias,session);}
+ }
+ private async Task<SharedSession> Authenticate(string alias,SharedSession session){
+  if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
   authenticating=true;
   try{Notice("Verbinde mit "+alias+" … Den Sicherheitsschlüssel bestätigen, sobald Windows danach fragt.");await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);return session;}
   finally{authenticating=false;Push();}
+ }
+ private async Task WaitForPi(string alias,string host){
+  if(waitingFor.ContainsKey(alias))throw new InvalidOperationException("Pi Relay wartet bereits auf den Pi.");
+  var cancel=new CancellationTokenSource();waitingFor[alias]=cancel;Push();
+  Notice("Der Pi antwortet noch nicht. Pi Relay verbindet einmal, sobald er wieder da ist (bis zu 3 Minuten) …");Log(alias+": wartet auf den Pi");
+  try{if(!await PiWait.Until(()=>PiWait.SshPort(host),()=>HostReachability.Ping(host),cancel.Token))throw new InvalidOperationException("Pi nach 3 Minuten nicht erreichbar. Ist er eingeschaltet und im Netz? Sonst die IP neben dem Gerät prüfen.");}
+  catch(OperationCanceledException){throw new InvalidOperationException("Warten auf den Pi abgebrochen.");}
+  finally{waitingFor.Remove(alias);cancel.Dispose();CheckReachability();Push();}
  }
  // Read-only board facts for the header; failures just leave the previous values.
  private async Task LoadDeviceFacts(string alias,SharedSession session){
@@ -241,7 +259,8 @@ public sealed class RelayWindow : Window {
   var session=await EnsureConnection(alias);
   // Probe the existing Pi endpoint once. An unavailable desktop must not launch
   // an apparently connected viewer or start a second SSH authentication.
-  var probe=await session.Request("tcp_open");await session.Request("tcp_close",new{channel=probe.GetProperty("channel").GetInt32()});
+  var waited=false;
+  var probe=await session.OpenTunnelWaiting(_=>{if(!waited){waited=true;Dispatcher.BeginInvoke(()=>Notice("Warte auf den VNC-Server des Pi (bis zu 2 Minuten) …"));}});await probe.DisposeAsync();
   var port=await session.VncPort();Open(viewer,"127.0.0.1::"+port);
   Log(alias+": Externer VNC Viewer über bestehenden SSH-Kanal geöffnet");
  }

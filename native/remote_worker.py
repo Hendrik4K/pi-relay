@@ -157,7 +157,9 @@ class Broker:
             return {}
         if op == 'tcp_open':
             # Only the Pi's own VNC endpoint; never an arbitrary network proxy.
-            sock = socket.create_connection(('127.0.0.1', 5900), timeout=8)
+            # Nothing listening yet (desktop still logging in): a fixed message the app can wait on.
+            try: sock = socket.create_connection(('127.0.0.1', 5900), timeout=8)
+            except ConnectionRefusedError: raise ConnectionError('VNC-Server auf dem Pi nicht aktiv (127.0.0.1:5900)') from None
             sock.settimeout(1)
             self.next_socket += 1
             channel = self.next_socket

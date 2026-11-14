@@ -83,6 +83,11 @@ try{
  await reach.Check(["192.168.1.50"],_=>false);Check(State()=="online"&&changes==1,"One missed ping does not flip the state");
  await reach.Check(["192.168.1.50"],_=>false);Check(State()=="offline"&&changes==2,"Two misses in a row mark offline");
  await reach.Check(["192.168.1.50"],_=>false);Check(State()=="online"&&changes==3,"Recovers on the next answer");
+ PiWait.Every=TimeSpan.FromMilliseconds(5);PiWait.Limit=TimeSpan.FromSeconds(5);
+ var sshTries=0;Check(await PiWait.Until(()=>Task.FromResult(++sshTries>=3),()=>Task.FromResult(false),default)&&sshTries==3,"Waits until the SSH port answers");
+ var pingTries=0;Check(await PiWait.Until(()=>Task.FromResult(false),()=>Task.FromResult(++pingTries>0),default)&&pingTries==PiWait.PingOnlyRounds,"Steady ping counts as back when the SSH port is unknown");
+ PiWait.Limit=TimeSpan.FromMilliseconds(60);Check(!await PiWait.Until(()=>Task.FromResult(false),()=>Task.FromResult(false),default),"Gives up after the limit");
+ PiWait.Limit=TimeSpan.FromSeconds(5);using(var cancelWait=new CancellationTokenSource(40)){var cancelled=false;try{await PiWait.Until(()=>Task.FromResult(false),()=>Task.FromResult(false),cancelWait.Token);}catch(OperationCanceledException){cancelled=true;}Check(cancelled,"Cancelling the wait stops it");}
  var never=new HostReachability(()=>{},_=>Task.FromResult(false));
  await never.Check(["10.0.0.5"],_=>true);await never.Check(["10.0.0.5"],_=>true);Check(never.Snapshot()["10.0.0.5"]=="online","A live SSH session overrides failing ICMP");
  await never.Check([],_=>false);Check(never.Snapshot().Count==0,"Removed addresses disappear");
@@ -103,5 +108,5 @@ try{
  var applied=SshHostEdit.Apply(ssh,"192.168.1.50","192.168.1.61");
  Check(applied==(2,2)&&File.ReadAllText(Path.Combine(ssh,"config"))==moved&&Directory.GetFiles(ssh,"*.bak-pirelay-*").Length==2,"Apply rewrites in place with backups");
  try{SshHostEdit.Apply(ssh,"10.0.0.9","10.0.0.10");Check(false,"Unknown old host must fail");}catch(InvalidOperationException){}
- Console.WriteLine("PASS: own pictures (bounded PNG, refusals, reset), tray click phases, reachability (ping only, 2-miss debounce, SSH overrides), Pi address edit (both aliases, comments/other hosts untouched, keys carried, no overwrite, input validation, backups), relaunch through Explorer after exit (quoted path), stable dist-tag only, offline is not current, single notice, persisted skip/restore, later release reappears, no build without project or for stale version, only tested newer builds are activatable, daily check cadence. No network or process start.");
+ Console.WriteLine("PASS: own pictures (bounded PNG, refusals, reset), tray click phases, reachability (ping only, 2-miss debounce, SSH overrides), wait for a restarting Pi (SSH port, steady ping, limit, cancel), Pi address edit (both aliases, comments/other hosts untouched, keys carried, no overwrite, input validation, backups), relaunch through Explorer after exit (quoted path), stable dist-tag only, offline is not current, single notice, persisted skip/restore, later release reappears, no build without project or for stale version, only tested newer builds are activatable, daily check cadence. No network or process start.");
 }finally{try{Directory.Delete(sandbox,true);}catch{}}

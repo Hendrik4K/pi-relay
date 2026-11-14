@@ -96,10 +96,31 @@ try{
  Require(Path.GetDirectoryName(saved)==home&&File.ReadAllBytes(saved).SequenceEqual(payload),"Dropped file arrives intact in the inbox: "+saved);
  Require(launches==2,"File drop reuses the SSH transport");
  bridge.Dispose();
+
+ // VNC server not listening yet (desktop still logging in after a restart): wait on the same transport.
+ SharedSession.VncWait=TimeSpan.FromSeconds(20);SharedSession.VncRetry=TimeSpan.FromMilliseconds(250);
+ server.Stop();var acceptedBefore=accepted;
+ bridge=new ScreenBridge("MasterControl",Ensure,Post);var opening=bridge.Open();
+ await Until(()=>posts.Any(p=>p.GetProperty("type").GetString()=="screenState"&&p.GetProperty("state").GetString()=="waiting"),"missing VNC server is reported as waiting");
+ var openedBefore=Count("screenOpened");
+ server=new TcpListener(IPAddress.Loopback,port);server.Start();
+ _=Task.Run(async()=>{var listener=server;while(true){TcpClient client;try{client=await listener.AcceptTcpClientAsync();}catch{return;}Interlocked.Increment(ref accepted);_=Serve(client);}});
+ await Until(()=>Count("screenOpened")==openedBefore+1,"viewer opens once the VNC server listens");await opening;
+ Require(launches==2&&accepted==acceptedBefore+1,"Waiting reuses the SSH transport and opens one VNC stream");
+ bridge.Dispose();
+ server.Stop();var closedWaiting=Count("screenClosed");
+ bridge=new ScreenBridge("MasterControl",Ensure,Post);opening=bridge.Open();
+ await Until(()=>posts.Count(p=>p.GetProperty("type").GetString()=="screenState"&&p.GetProperty("state").GetString()=="waiting")>=2,"second wait starts");
+ bridge.Close();await opening;
+ Require(Count("screenClosed")==closedWaiting+1&&!Last("screenClosed").GetProperty("error").GetBoolean(),"Cancelling the wait closes quietly");
+ SharedSession.VncWait=TimeSpan.FromMilliseconds(600);
+ bridge=new ScreenBridge("MasterControl",Ensure,Post);await bridge.Open();
+ Require(Last("screenClosed").GetProperty("error").GetBoolean()&&Last("screenClosed").GetProperty("message").GetString()!.Contains("x11vnc")&&session.IsReady,"Gives up after the limit with a clear message and keeps SSH");
+ bridge.Dispose();
  var windows=new SingleInstances<object>();var first=windows.GetOrCreate("MasterControl",()=>new object(),out var created1);var again=windows.GetOrCreate("MasterControl",()=>new object(),out var created2);
  Require(created1&&!created2&&ReferenceEquals(first,again),"A second open focuses the existing window instead of creating one");
  windows.Release("MasterControl",new object());Require(windows.Keys.Count==1,"A stale window cannot release the current one");
  windows.Release("MasterControl",first);Require(windows.Keys.Count==0,"Closing releases the alias");
 
- Console.WriteLine("PASS: unreachable explanation, dropped file chunks into the fixed inbox (sanitized name, intact), one transport/one VNC stream per open, ordered input, 2 MiB burst, close keeps SSH, reconnect without re-auth, no retry after Pi end or SSH loss, explicit login only, dispose cleanup, single window per alias.");
+ Console.WriteLine("PASS: unreachable explanation, patient wait for a VNC server that starts late (cancel, limit),  dropped file chunks into the fixed inbox (sanitized name, intact), one transport/one VNC stream per open, ordered input, 2 MiB burst, close keeps SSH, reconnect without re-auth, no retry after Pi end or SSH loss, explicit login only, dispose cleanup, single window per alias.");
 }finally{session.Dispose();server.Stop();try{Directory.Delete(home,true);}catch{}}

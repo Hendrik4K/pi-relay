@@ -31,6 +31,7 @@ export function ScreenView(){
  const alias=new URLSearchParams(location.search).get('screen')||'MasterControl';
  const host=useRef(null),rfb=useRef(null),channel=useRef(null),credentials=useRef(null),lastClipboard=useRef(''),share=useRef(true),noticeTimer=useRef(0);
  const [status,setStatus]=useState(bridge?'waiting':'unavailable');
+ const [waitSeconds,setWaitSeconds]=useState(0);
  const [message,setMessage]=useState(bridge?'':'Der integrierte Viewer arbeitet in der Pi-Relay-App über deine bestehende SSH-Verbindung.');
  const [needs,setNeeds]=useState([]),[form,setForm]=useState({username:'',password:''});
  const [scale,setScale]=useState('fit'),[fullscreen,setFullscreen]=useState(false),[toolbar,setToolbar]=useState(true);
@@ -53,12 +54,12 @@ export function ScreenView(){
  function teardown(){const current=rfb.current;rfb.current=null;channel.current=null;if(current){try{current.disconnect();}catch{}}}
  function connect(){
   if(!bridge||rfb.current)return;
-  setStatus('connecting');setMessage('');
+  setStatus('connecting');setMessage('');setWaitSeconds(0);
   const pipe=new RelayChannel();channel.current=pipe;
   const client=new RFB(host.current,pipe,credentials.current?{credentials:credentials.current}:{});
   rfb.current=client;
   client.scaleViewport=scaleRef.current==='fit';client.resizeSession=false;client.clipViewport=false;client.focusOnClick=true;client.showDotCursor=true;client.background='#17151a';client.qualityLevel=qualityRef.current;client.compressionLevel=2;
-  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);if(share.current)send('screenClipboardRead',{reason:'sync'});});
+  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);if(share.current)send('screenClipboardRead',{reason:'sync'});});
   client.addEventListener('disconnect',e=>{if(rfb.current!==client&&rfb.current!==null)return;rfb.current=null;channel.current=null;setStatus(current=>current==='error'?'error':e.detail.clean?'disconnected':'error');setMessage(current=>current||(e.detail.clean?'Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.':'Die Bildschirmverbindung wurde unterbrochen.'));});
   client.addEventListener('credentialsrequired',e=>{setNeeds(e.detail.types||['password']);setStatus('credentials');});
   client.addEventListener('securityfailure',e=>{credentials.current=null;setStatus('error');setMessage('VNC-Anmeldung abgelehnt'+(e.detail.reason?': '+e.detail.reason:'.'));});
@@ -66,7 +67,7 @@ export function ScreenView(){
   client.addEventListener('desktopname',e=>setMeta(m=>({...m,desktop:e.detail.name})));
   send('screenOpen');
  }
- function disconnect(){teardown();setStatus('disconnected');setMessage('Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.');}
+ function disconnect(){teardown();setWaitSeconds(0);setStatus('disconnected');setMessage('Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.');}
  function submitCredentials(e){
   e.preventDefault();const values={};for(const type of needs)if(type==='username'||type==='password')values[type]=form[type];
   credentials.current=values;setForm({username:'',password:''});setStatus('connecting');rfb.current?.sendCredentials(values);
@@ -106,10 +107,10 @@ export function ScreenView(){
   if(!bridge)return;
   const receive=e=>{const m=e.data;switch(m.type){
    case 'screenInit':setMeta(v=>({...v,version:m.version||''}));setFullscreen(Boolean(m.fullscreen));if(m.autoConnect)connect();else{setStatus('disconnected');setMessage('Ansicht neu geladen. Mit „Verbinden“ den Bildschirm erneut öffnen.');}break;
-   case 'screenState':setStatus(s=>s==='credentials'?s:'connecting');break;
+   case 'screenState':setStatus(s=>s==='credentials'?s:'connecting');setWaitSeconds(m.state==='waiting'?m.seconds||1:0);break;
    case 'screenOpened':channel.current?.opened();break;
    case 'screenData':channel.current?.receive(fromBase64(m.data));break;
-   case 'screenClosed':if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');break;
+   case 'screenClosed':setWaitSeconds(0);if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');break;
    case 'screenNotice':flash(m.message);break;
    case 'screenFullscreen':setFullscreen(m.on);setToolbar(!m.on);break;
    case 'screenResizeEnd':requestFit();break;
@@ -163,7 +164,8 @@ export function ScreenView(){
     {needs.includes('password')&&<label className="field">Passwort<input autoFocus={!needs.includes('username')} type="password" autoComplete="off" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))}/></label>}
     <div className="screen-card-actions"><button className="primary-action compact" type="submit">Anmelden</button><button className="small-button" type="button" onClick={disconnect}>Abbrechen</button></div>
    </form>:<div className="screen-card">
-    {busy?<><span className="screen-spinner" aria-hidden="true"/><strong>Verbinde mit dem Pi-Bildschirm …</strong><p>Über die SSH-Verbindung {alias}. Ist sie getrennt, bestätige bei Aufforderung deinen Sicherheitsschlüssel.</p></>
+    {busy&&waitSeconds>0?<><span className="screen-spinner" aria-hidden="true"/><strong>Warte auf den VNC-Server des Pi …</strong><p>Der Pi startet seinen Desktop vermutlich noch. Pi Relay versucht es über die bestehende SSH-Verbindung weiter (noch bis zu {waitSeconds} s).</p><button className="small-button" type="button" onClick={disconnect}>Abbrechen</button></>
+    :busy?<><span className="screen-spinner" aria-hidden="true"/><strong>Verbinde mit dem Pi-Bildschirm …</strong><p>Über die SSH-Verbindung {alias}. Ist sie getrennt, bestätige bei Aufforderung deinen Sicherheitsschlüssel.</p></>
     :status==='unavailable'?<><strong>Integrierter Viewer</strong><p>{message}</p></>
     :status==='waiting'?<><strong>Pi-Bildschirm</strong><p>Wird vorbereitet …</p></>
     :<><strong>{status==='error'?'Verbindung nicht möglich':'Getrennt'}</strong><p>{message}</p><button className="primary-action compact" onClick={connect}><ArrowClockwise size={17}/>Neu verbinden</button></>}

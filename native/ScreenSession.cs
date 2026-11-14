@@ -13,23 +13,26 @@ public sealed class ScreenBridge : IDisposable {
  private Channel<byte[]>? outgoing;
  private int generation;
  private bool opening,disposed;
+ private CancellationTokenSource? waiting;
  public string Alias {get;}
  public string State {get;private set;}="idle";
  public ScreenBridge(string alias,Func<Task<SharedSession>> ensure,Action<object> post){Alias=alias;this.ensure=ensure;this.post=post;}
 
- // Explicit user action only. A failed attempt is reported, never retried automatically.
+ // Explicit user action only. A failed attempt is reported, never retried automatically; only a
+ // VNC server that is not listening yet is awaited for a while on the existing SSH transport.
  public async Task Open(){
-  int current;
-  lock(gate){if(disposed||opening||State=="open")return;opening=true;current=++generation;State="connecting";}
+  int current;CancellationTokenSource cancel;
+  lock(gate){if(disposed||opening||State=="open")return;opening=true;current=++generation;State="connecting";waiting?.Cancel();waiting=cancel=new();}
   post(new{type="screenState",state="connecting"});
   try{
    var session=await ensure();
-   var opened=await session.OpenTunnel();
+   var opened=await session.OpenTunnelWaiting(seconds=>{if(Volatile.Read(ref generation)==current)post(new{type="screenState",state="waiting",seconds});},cancel.Token);
    var queue=Channel.CreateBounded<byte[]>(new BoundedChannelOptions(1024){SingleReader=true,SingleWriter=true});
    lock(gate){if(current!=generation||disposed){_=opened.DisposeAsync().AsTask();return;}tunnel=opened;outgoing=queue;State="open";}
    post(new{type="screenOpened"});
    _=Pump(opened,current);_=Drain(opened,queue,current);
-  }catch(Exception e){Finish(current,e.Message,true);}
+  }catch(OperationCanceledException){}
+  catch(Exception e){Finish(current,e.Message,true);}
   finally{lock(gate)opening=false;}
  }
 
@@ -66,7 +69,7 @@ public sealed class ScreenBridge : IDisposable {
 
  private void Finish(int current,string message,bool error){
   TcpTunnel? closing;Channel<byte[]>? queue;
-  lock(gate){if(current!=generation||State is "idle" or "closed" or "error")return;generation++;closing=tunnel;queue=outgoing;tunnel=null;outgoing=null;State=error?"error":"closed";}
+  lock(gate){if(current!=generation||State is "idle" or "closed" or "error")return;generation++;closing=tunnel;queue=outgoing;tunnel=null;outgoing=null;State=error?"error":"closed";waiting?.Cancel();}
   queue?.Writer.TryComplete();
   if(closing!=null)_=closing.DisposeAsync().AsTask();
   if(!disposed)post(new{type="screenClosed",error,message});
@@ -74,7 +77,7 @@ public sealed class ScreenBridge : IDisposable {
 
  public void Dispose(){
   TcpTunnel? closing;Channel<byte[]>? queue;
-  lock(gate){if(disposed)return;disposed=true;generation++;closing=tunnel;queue=outgoing;tunnel=null;outgoing=null;State="closed";}
+  lock(gate){if(disposed)return;disposed=true;generation++;closing=tunnel;queue=outgoing;tunnel=null;outgoing=null;State="closed";waiting?.Cancel();}
   queue?.Writer.TryComplete();
   if(closing!=null)_=closing.DisposeAsync().AsTask();
  }

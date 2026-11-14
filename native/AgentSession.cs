@@ -114,6 +114,22 @@ public sealed class SharedSession : IDisposable {
  }
  // One TCP stream to the Pi's fixed VNC endpoint inside this transport; never a new SSH login.
  public async Task<TcpTunnel> OpenTunnel(){var opened=await Request("tcp_open");var channel=opened.GetProperty("channel").GetInt32();return new TcpTunnel(this,channel,SocketChannel(channel).Reader);}
+ public const string VncMissing="VNC-Server auf dem Pi nicht aktiv";
+ internal static TimeSpan VncWait=TimeSpan.FromMinutes(2),VncRetry=TimeSpan.FromSeconds(3);
+ // After a Pi restart the VNC server (WayVNC or x11vnc) may start a little after the desktop
+ // login. Retry the fixed endpoint on this transport only; never a new SSH login.
+ public async Task<TcpTunnel> OpenTunnelWaiting(Action<int>? waiting=null,CancellationToken token=default){
+  var end=DateTime.UtcNow+VncWait;
+  while(true){
+   try{return await OpenTunnel();}
+   catch(InvalidOperationException e) when(e.Message.Contains(VncMissing)&&IsReady&&DateTime.UtcNow<end){
+    waiting?.Invoke((int)Math.Ceiling((end-DateTime.UtcNow).TotalSeconds));
+    await Task.Delay(VncRetry,token);
+   }
+   catch(InvalidOperationException e) when(e.Message.Contains(VncMissing)){throw new InvalidOperationException(VncMissing+" (127.0.0.1:5900). Läuft auf dem Pi der Desktop mit WayVNC oder x11vnc?");}
+  }
+ }
+ internal static bool Unreachable(string message)=>message.StartsWith("Pi nicht erreichbar",StringComparison.Ordinal);
  internal async Task CloseTunnel(int channel){if(sockets.TryRemove(channel,out var queue))queue.Writer.TryComplete();if(IsReady)try{await Request("tcp_close",new{channel});}catch{}}
  public void Refresh(){if(process is {HasExited:true}&&State=="ready"){Stop();State="error";changed();}}
  private void Stop(){

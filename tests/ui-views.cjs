@@ -194,6 +194,15 @@ const {chromium}=load('playwright');
   assert((await offlinePage.locator('.case-image').evaluate(e=>getComputedStyle(e).filter)).includes('grayscale(1)'),'Case turns grey');
   await offlinePage.locator('.panel-viewport').screenshot({path:path.join(output,'views-offline.png')});
   await offlinePage.close();
-  console.log('PASS: compact overview, stacked device status, backup drawer/key icon, transient help, agent buttons, views, keyboard return, collapse direction, 360px layout and reduced motion.');
+  // Explicit connect while the Pi restarts: amber "Wartet auf den Pi …", hover offers cancelling.
+  const waitPage=await browser.newPage({viewport:{width:900,height:760}});
+  await waitPage.goto((process.env.PI_RELAY_QA_URL||'http://127.0.0.1:4173/').split('?')[0]+'?design=1&pi-waiting=1');
+  await waitPage.getByRole('heading',{name:'Raspberry Pi 5'}).waitFor();
+  assert.equal(await waitPage.locator('.device-state.waiting .state-rest').innerText(),'Wartet auf den Pi …');
+  assert(await waitPage.locator('.session-connect').first().isDisabled(),'Access row is locked while waiting');
+  await waitPage.locator('.device-state.waiting').click();
+  await waitPage.locator('.device-state.waiting').waitFor({state:'detached'});
+  await waitPage.close();
+  console.log('PASS: compact overview, stacked device status, waiting for a restarting Pi (cancel), backup drawer/key icon, transient help, agent buttons, views, keyboard return, collapse direction, 360px layout and reduced motion.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
