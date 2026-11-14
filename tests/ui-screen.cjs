@@ -51,6 +51,7 @@ function mockHost(){
    if(m.action==='screenOpen'){vnc.opens++;vnc.state='version';vnc.buffer=new Uint8Array(0);setTimeout(()=>{deliver({type:'screenOpened'});reply([...'RFB 003.008\n'].map(c=>c.charCodeAt(0)));},5);}
    if(m.action==='screenSend'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const all=new Uint8Array(vnc.buffer.length+chunk.length);all.set(vnc.buffer);all.set(chunk,vnc.buffer.length);vnc.buffer=all;pump();}
    if(m.action==='screenUpload'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const prev=(window.__uploads||={})[m.token]||new Uint8Array(0);const all=new Uint8Array(prev.length+chunk.length);all.set(prev);all.set(chunk,prev.length);window.__uploads[m.token]=all;(window.__uploadChunks||=[]).push(m.offset);setTimeout(()=>deliver({type:'screenUploadResult',id:m.id,ok:true,result:m.final?{path:'/home/pi/Desktop/'+m.name,size:all.length}:{size:all.length}}),5);}
+   if(m.action==='screenInfo')setTimeout(()=>deliver({type:'screenInfo',info:{os:'Raspberry Pi OS Trixie',host:'Raspi5',server:'x11vnc'}}),0);
    if(m.action==='screenDisconnect')vnc.state='off';
    if(m.action==='screenFullscreen')setTimeout(()=>deliver({type:'screenFullscreen',on:m.on}),0);
    if(m.action==='screenClipboardRead')setTimeout(()=>deliver({type:'screenClipboardText',text:window.__windowsClipboard||'',reason:m.reason}),0);
@@ -87,6 +88,11 @@ function mockHost(){
   // After connecting, the 1000x700 window (654 px tall canvas area) shows bars; the window is asked to shrink to 4:3.
   assert.equal(await page.locator('.screen-footnote').count(),0,'No bottom info bar');
   assert((await page.locator('.screen-title').getAttribute('title')).includes('Pi Relay 0.4.0'),'Version info lives in the title tooltip');
+  await page.locator('.screen-host',{hasText:'Raspi5'}).waitFor();
+  assert.equal(await page.locator('.screen-os').innerText(),'Raspberry Pi OS Trixie');
+  assert(!(await page.locator('.screen-title').innerText()).includes('MasterControl'),'Access name only in the window title');
+  assert((await page.locator('.screen-status').innerText()).includes('x11vnc'),'VNC server shown next to the status');
+  assert.equal(await page.locator('.screen-host').evaluate(e=>getComputedStyle(e).color),'rgb(226, 87, 127)');
   const firstFit=await page.evaluate(()=>window.__relayMessages.find(m=>m.action==='screenFit'));
   assert(firstFit&&Math.abs(firstFit.dw-(Math.round(654*4/3)-1000))<=1&&firstFit.dh===0,'Initial fit request: '+JSON.stringify(firstFit));
   let box=await mapsPointer(400,300,'Fit 1000px');

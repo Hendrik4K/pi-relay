@@ -65,4 +65,13 @@ class WorkerTests(unittest.TestCase):
   info=worker.device_info()
   self.assertEqual(sorted(info),['memoryBytes','model','storageBytes','storageKind']);self.assertGreater(info['storageBytes'],0)
 
+ def test_screen_info_names_system_and_server(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);(root/'os-release').write_text('PRETTY_NAME="Debian GNU/Linux 13 (trixie)"\nNAME="Debian GNU/Linux"\nVERSION_CODENAME=trixie\n')
+   for pid,name in (('17','bash'),('42','x11vnc'),('self','x11vnc')):(root/pid).mkdir();(root/pid/'comm').write_text(name+'\n')
+   info=worker.screen_info(root/'os-release',root)
+   self.assertEqual(info['server'],'x11vnc');self.assertIn('Trixie',info['os']);self.assertTrue(info['host'])
+   (root/'42'/'comm').write_text('wayvnc\n');self.assertEqual(worker.screen_info(root/'os-release',root)['server'],'WayVNC')
+   (root/'42'/'comm').write_text('sshd\n');self.assertEqual(worker.screen_info(root/'nothing',root)['server'],'')
+
 if __name__=='__main__':unittest.main()

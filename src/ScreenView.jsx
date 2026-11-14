@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import RFB from '@novnc/novnc';
-import {ArrowClockwise,ArrowsIn,ArrowsOut,ClipboardText,Plug,PlugsConnected} from '@phosphor-icons/react';
+import {ArrowClockwise,ArrowsIn,ArrowsOut,ClipboardText,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
 import './relay.css';
 
 const bridge=window.chrome?.webview;
@@ -35,7 +35,7 @@ export function ScreenView(){
  const [message,setMessage]=useState(bridge?'':'Der integrierte Viewer arbeitet in der Pi-Relay-App über deine bestehende SSH-Verbindung.');
  const [needs,setNeeds]=useState([]),[form,setForm]=useState({username:'',password:''});
  const [scale,setScale]=useState('fit'),[fullscreen,setFullscreen]=useState(false),[toolbar,setToolbar]=useState(true);
- const [shareClipboard,setShareClipboard]=useState(true),[clipboardSeen,setClipboardSeen]=useState(false),[notice,setNotice]=useState(''),[meta,setMeta]=useState({version:'',desktop:''});
+ const [shareClipboard,setShareClipboard]=useState(true),[clipboardSeen,setClipboardSeen]=useState(false),[notice,setNotice]=useState(''),[meta,setMeta]=useState({version:'',desktop:'',os:'',host:'',server:''});
  const [quality,setQuality]=useState(storedQuality);
  const [dragging,setDragging]=useState(false),[transfer,setTransfer]=useState(null);
  const uploads=useRef(new Map()),transferring=useRef(false);
@@ -59,7 +59,7 @@ export function ScreenView(){
   const client=new RFB(host.current,pipe,credentials.current?{credentials:credentials.current}:{});
   rfb.current=client;
   client.scaleViewport=scaleRef.current==='fit';client.resizeSession=false;client.clipViewport=false;client.focusOnClick=true;client.showDotCursor=true;client.background='#17151a';client.qualityLevel=qualityRef.current;client.compressionLevel=2;
-  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);if(share.current)send('screenClipboardRead',{reason:'sync'});});
+  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');if(share.current)send('screenClipboardRead',{reason:'sync'});});
   client.addEventListener('disconnect',e=>{if(rfb.current!==client&&rfb.current!==null)return;rfb.current=null;channel.current=null;setStatus(current=>current==='error'?'error':e.detail.clean?'disconnected':'error');setMessage(current=>current||(e.detail.clean?'Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.':'Die Bildschirmverbindung wurde unterbrochen.'));});
   client.addEventListener('credentialsrequired',e=>{setNeeds(e.detail.types||['password']);setStatus('credentials');});
   client.addEventListener('securityfailure',e=>{credentials.current=null;setStatus('error');setMessage('VNC-Anmeldung abgelehnt'+(e.detail.reason?': '+e.detail.reason:'.'));});
@@ -110,6 +110,7 @@ export function ScreenView(){
    case 'screenState':setStatus(s=>s==='credentials'?s:'connecting');setWaitSeconds(m.state==='waiting'?m.seconds||1:0);break;
    case 'screenOpened':channel.current?.opened();break;
    case 'screenData':channel.current?.receive(fromBase64(m.data));break;
+   case 'screenInfo':setMeta(v=>({...v,os:m.info?.os||'',host:m.info?.host||'',server:m.info?.server||''}));break;
    case 'screenClosed':setWaitSeconds(0);if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');break;
    case 'screenNotice':flash(m.message);break;
    case 'screenFullscreen':setFullscreen(m.on);setToolbar(!m.on);break;
@@ -144,8 +145,8 @@ export function ScreenView(){
   onDragLeave={e=>{if(!e.relatedTarget)setDragging(false);}}
   onDrop={e=>{e.preventDefault();setDragging(false);const files=[...(e.dataTransfer?.files||[])];if(files.length)uploadFiles(files);}}>
   <header className="screen-toolbar">
-   <span className="screen-title" title={'Integrierter Viewer (noVNC)'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><img src="/assets/raspberry.png" alt=""/><strong>{alias}</strong><small>{meta.desktop||'Pi-Bildschirm'}</small></span>
-   <span className={'screen-status '+status} role="status"><i/>{labels[status]}</span>
+   <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={21}/><b>noVNC</b></span>{meta.os&&<small className="screen-os">{meta.os}</small>}<strong className="screen-host">{meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm'}</strong></span>
+   <span className={'screen-status '+status} role="status"><i/>{labels[status]}{connected&&meta.server&&<small className="screen-server"> · {meta.server}</small>}</span>
    <span className="screen-tools">
     {connected||busy||status==='credentials'?<button className="screen-tool" onClick={disconnect} title="Nur die Bildschirmverbindung trennen; SSH bleibt verbunden"><Plug size={17}/><span>Trennen</span></button>:<button className="screen-tool accent" disabled={!bridge} onClick={connect}><PlugsConnected size={17}/><span>Verbinden</span></button>}
     <label className="screen-quality" title="Bildqualität: höher ist schärfer, braucht aber mehr Bandbreite. Die Auflösung selbst legt der Pi fest."><span>Qualität</span><input type="range" min="0" max="9" step="1" value={quality} aria-label="Bildqualität" onChange={e=>setQuality(Number(e.target.value))}/><output>{quality}</output></label>

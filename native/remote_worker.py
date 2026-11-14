@@ -99,6 +99,27 @@ def device_info():
     kind = 'NVMe' if name.startswith('nvme') else 'SD' if name.startswith('mmcblk') else 'USB' if name.startswith('sd') else ''
     return {'model': model, 'memoryBytes': mem, 'storageBytes': total, 'storageKind': kind}
 
+# Header facts for the viewer window: system, Pi name and which VNC server answers on 5900.
+def screen_info(os_release='/etc/os-release', proc='/proc'):
+    fields = {}
+    try:
+        for line in Path(os_release).read_text(errors='replace').splitlines():
+            key, _, value = line.partition('=')
+            if value: fields[key] = value.strip().strip('"')
+    except OSError: pass
+    distro = 'Raspberry Pi OS' if Path('/etc/rpi-issue').exists() else fields.get('NAME', '').split(' GNU/')[0]
+    system = (distro + ' ' + fields.get('VERSION_CODENAME', '').capitalize()).strip() or fields.get('PRETTY_NAME', '')
+    servers = {'x11vnc': 'x11vnc', 'wayvnc': 'WayVNC'}
+    server = ''
+    try: entries = list(Path(proc).iterdir())
+    except OSError: entries = []
+    for entry in entries:
+        if not entry.name.isdigit(): continue
+        try: name = (entry / 'comm').read_text().strip()
+        except OSError: continue
+        if name in servers: server = servers[name]; break
+    return {'os': system, 'host': socket.gethostname(), 'server': server}
+
 class Broker:
     def __init__(self, emit):
         self.emit, self.terminal, self.master = emit, None, None
@@ -187,6 +208,7 @@ class Broker:
             if sock: sock.close()
             return {}
         if op == 'device_info': return device_info()
+        if op == 'screen_info': return screen_info()
         if op == 'inbox_write': return inbox_write(args)
         if op == 'inbox_cancel': return inbox_cancel(args)
         if op in ('list', 'read', 'write', 'run'): return perform(request['config'], request)

@@ -55,6 +55,7 @@ public sealed class ScreenWindow : Window {
   case "screenOpen":await bridge.Open();break;
   case "screenSend":var data=Convert.FromBase64String(r.GetProperty("data").GetString()??"");if(data.Length>65536)throw new IOException("Datenblock zu groß");bridge.Send(data);break;
   case "screenDisconnect":bridge.Close();break;
+  case "screenInfo":try{Post(new{type="screenInfo",info=await bridge.Inbox("screen_info",new{})});}catch{}break;
   case "screenFullscreen":SetFullscreen(r.GetProperty("on").GetBoolean());break;
   case "screenUpload":{var id=r.GetProperty("id").GetString();
    try{var chunk=r.GetProperty("data").GetString()??"";if(chunk.Length>1500000)throw new IOException("Datenblock zu groß");
