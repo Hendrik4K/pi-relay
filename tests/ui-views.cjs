@@ -51,6 +51,7 @@ const {chromium}=load('playwright');
   assert.equal(await page.locator('.spec-flip').getAttribute('data-face'),'front');
   assert.equal(await page.locator('.spec-front').innerText(),'128GB USB');assert.equal(await page.locator('.spec-back').innerText(),'16GB RAM');
   {const route=await page.locator('.session-line.first').evaluate(e=>[getComputedStyle(e).borderLeftStyle,getComputedStyle(e,'::after').animationName]);assert.deepEqual(route,['solid','route-ping'],'Connected first route is solid with a ping-and-answer shimmer');
+   {const box=await page.locator('.check-label.check-after').evaluate(e=>[e.querySelector('.check-visual').getBoundingClientRect().left,e.getBoundingClientRect().left]);assert(box[0]>box[1]+40,'Minimiert-starten box sits right of its text');}
    assert.equal(await page.locator('.brand div>span').evaluate(e=>getComputedStyle(e).fontWeight),'700','Subtitle is bold');}
   {const [num,unit,title]=await page.evaluate(()=>[document.querySelector('.spec-back .spec-num'),document.querySelector('.spec-back .spec-unit'),document.querySelector('.device-copy h2')].map(e=>parseFloat(getComputedStyle(e).fontSize)));assert(Math.abs(num-title)<0.6&&Math.abs(unit-title*0.72)<0.6,'Spec number matches the heading, unit at lowercase height: '+[num,unit,title]);}
   const flip=await page.locator('.spec-flip').boundingBox();

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import RFB from '@novnc/novnc';
-import {ArrowClockwise,ArrowsIn,ArrowsOut,ClipboardText,Microphone,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
+import {ArrowClockwise,ArrowsIn,ArrowsOut,CaretDown,Check,ClipboardText,Microphone,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
 import './relay.css';
 
 const bridge=window.chrome?.webview;
@@ -16,6 +16,36 @@ registerProcessor('pi-relay-mic',PiRelayMic);`;
 // Level meter in decibels like Wave Link / Windows: -60 dBFS (empty) to 0 dBFS (full).
 const meterScale=peak=>Math.max(0,Math.min(1,(20*Math.log10(Math.max(peak,1e-6))+60)/60));
 const bytesToBase64=buffer=>{const bytes=new Uint8Array(buffer);let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(text);};
+const TOOL_ORDER_KEY='pi-relay-toolbar-order';
+const DEFAULT_TOOLS=['mic','quality','connection','share','paste','scale'];
+function savedTools(){try{const v=JSON.parse(localStorage.getItem(TOOL_ORDER_KEY)||'null');if(Array.isArray(v)&&v.length===DEFAULT_TOOLS.length&&DEFAULT_TOOLS.every(t=>v.includes(t)))return v;}catch{}return DEFAULT_TOOLS;}
+// Like a phone home screen: holding a tool for 3 s makes all tools wiggle; dragging one onto another
+// swaps them; Esc or a click beside the tools ends it. Clicks do nothing while arranging.
+function useToolOrder(){
+ const [order,setOrder]=useState(savedTools),[editing,setEditing]=useState(false),[drag,setDrag]=useState(null),[over,setOver]=useState(null);
+ const hold=useRef(),start=useRef([0,0]),editingRef=useRef(false);editingRef.current=editing;
+ function swap(a,b){setOrder(o=>{const n=[...o],i=n.indexOf(a),j=n.indexOf(b);if(i<0||j<0||i===j)return o;[n[i],n[j]]=[n[j],n[i]];try{localStorage.setItem(TOOL_ORDER_KEY,JSON.stringify(n));}catch{}return n;});}
+ function slotAt(x,y,except){return document.elementsFromPoint(x,y).map(e=>e.closest?.('.tool-slot')).find(e=>e&&e.dataset.tool!==except)?.dataset.tool||null;}
+ function bind(id){return {
+  'data-tool':id,
+  onPointerDown:e=>{
+   if(editingRef.current){e.preventDefault();e.currentTarget.setPointerCapture?.(e.pointerId);setDrag(id);return;}
+   clearTimeout(hold.current);start.current=[e.clientX,e.clientY];hold.current=setTimeout(()=>setEditing(true),3000);},
+  // Moving (e.g. dragging the quality slider) is not a long press.
+  onPointerMove:e=>{if(editingRef.current){if(drag===id)setOver(slotAt(e.clientX,e.clientY,id));return;}if(Math.hypot(e.clientX-start.current[0],e.clientY-start.current[1])>6)clearTimeout(hold.current);},
+  onPointerUp:e=>{clearTimeout(hold.current);if(editingRef.current&&drag===id){const target=slotAt(e.clientX,e.clientY,id);if(target)swap(id,target);setDrag(null);setOver(null);}},
+  onPointerLeave:()=>clearTimeout(hold.current),onPointerCancel:()=>{clearTimeout(hold.current);setDrag(null);setOver(null);},
+  onClickCapture:e=>{if(editingRef.current){e.preventDefault();e.stopPropagation();}},
+  className:'tool-slot'+(drag===id?' dragging':'')+(over===id?' drop-target':'')};}
+ useEffect(()=>{if(!editing)return;
+  const key=e=>{if(e.key==='Escape'){e.preventDefault();setEditing(false);}};
+  const outside=e=>{if(!e.target.closest?.('.tool-slot'))setEditing(false);};
+  window.addEventListener('keydown',key,true);window.addEventListener('pointerdown',outside,true);
+  return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('pointerdown',outside,true);};},[editing]);
+ useEffect(()=>()=>clearTimeout(hold.current),[]);
+ return {order,editing,bind,setEditing};
+}
+
 function useMic(flash){
  const [on,setOn]=useState(false),[state,setState]=useState('off'),[level,setLevel]=useState(0),[devices,setDevices]=useState([]);
  const [device,setDevice]=useState(()=>{try{return localStorage.getItem(MIC_DEVICE_KEY)||'';}catch{return '';}});
@@ -36,7 +66,6 @@ function useMic(flash){
   capture.current={stream,ctx,node};
   const track=stream.getAudioTracks()[0];
   track.onended=()=>{if(capture.current?.stream===stream)disable('Das Mikrofon wurde getrennt.');};
-  const actual=track.getSettings().deviceId;if(actual&&actual!==deviceRef.current)remember(actual);
   list();
  }
  function enable(){wanted.current=true;setOn(true);setState('starting');send('micStart');}
@@ -83,6 +112,7 @@ export function ScreenView(){
  const host=useRef(null),rfb=useRef(null),channel=useRef(null),credentials=useRef(null),lastClipboard=useRef(''),share=useRef(true),noticeTimer=useRef(0);
  const [status,setStatus]=useState(bridge?'waiting':'unavailable');
  const [waitSeconds,setWaitSeconds]=useState(0);
+ const tools=useToolOrder(),[micMenu,setMicMenu]=useState(false);
  const mic=useMic(text=>flashRef.current?.(text)),micRef=useRef(mic);micRef.current=mic;const flashRef=useRef();flashRef.current=flash;
  const [message,setMessage]=useState(bridge?'':'Der integrierte Viewer arbeitet in der Pi-Relay-App über deine bestehende SSH-Verbindung.');
  const [needs,setNeeds]=useState([]),[form,setForm]=useState({username:'',password:''});
@@ -200,20 +230,22 @@ export function ScreenView(){
   <header className="screen-toolbar">
    <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={21}/><b>noVNC</b></span>{meta.os&&<small className="screen-os" title={meta.os}>{meta.os.replace(/^Raspberry Pi\s+/,'')}</small>}<strong className="screen-host">{meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm'}</strong></span>
    <span className={'screen-status '+status} role="status"><i/><span className="screen-status-text">{labels[status]}{connected&&meta.server&&<small className="screen-server">{meta.server}</small>}</span></span>
-   <span className="screen-tools">
-    <span className={'screen-mic'+(mic.on?' on':'')}>
-      <button className="screen-tool mic-toggle" aria-pressed={mic.on} disabled={!connected&&!mic.on} onClick={()=>mic.on?mic.disable():mic.enable()} title={mic.on?(mic.state==='waiting'?'Mikro wartet auf die Verbindung · ausschalten':'Windows-Mikrofon geht an den Pi · ausschalten'):'Windows-Mikrofon an den Pi senden'}><Microphone size={17} weight={mic.on?'fill':'regular'}/>{mic.on&&<i className="mic-dot"/>}<span>Mikro</span></button>
+   <span className={'screen-tools'+(tools.editing?' editing':'')} title={tools.editing?'Knopf auf einen anderen ziehen zum Tauschen · Esc oder Klick daneben beendet':undefined}>
+    {tools.order.map(id=><span key={id} {...tools.bind(id)}>{{
+     mic:<span className={'mic-button'+(mic.on?' on':'')+(mic.state==='waiting'?' waiting':'')}>
       {mic.on&&<span className="mic-level" aria-hidden="true"><b style={{transform:'scaleX('+meterScale(mic.level)+')'}}/></span>}
-      <select className="mic-device" aria-label="Mikrofon wählen" value={mic.device} onFocus={mic.list} onChange={e=>mic.choose(e.target.value)}>{!mic.devices.some(d=>d.deviceId===mic.device)&&<option value={mic.device}>{mic.device?'Gemerktes Mikrofon':'Standard-Mikrofon'}</option>}{mic.devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label||'Mikrofon'}</option>)}</select>
-     </span>
-    {connected||busy||status==='credentials'?<button className="screen-tool" onClick={disconnect} title="Nur die Bildschirmverbindung trennen; SSH bleibt verbunden"><Plug size={17}/><span>Trennen</span></button>:<button className="screen-tool accent" disabled={!bridge} onClick={connect}><PlugsConnected size={17}/><span>Verbinden</span></button>}
-    <label className="screen-quality" title="Bildqualität: höher ist schärfer, braucht aber mehr Bandbreite. Die Auflösung selbst legt der Pi fest."><span>Qualität</span><input type="range" min="0" max="9" step="1" value={quality} aria-label="Bildqualität" onChange={e=>setQuality(Number(e.target.value))}/><output>{quality}</output></label>
-    <button className="screen-tool" aria-pressed={scale==='fit'} onClick={()=>setScale(s=>s==='fit'?'native':'fit')} title={scale==='fit'?'An Fenster angepasst · auf Originalgröße wechseln':'Originalgröße 1:1 · an Fenster anpassen'}>{scale==='fit'?<ArrowsIn size={17}/>:<ArrowsOut size={17}/>}<span>{scale==='fit'?'Angepasst':'1:1'}</span></button>
-    <span className="screen-clipboard">
-     <button className="screen-tool" disabled={!connected} onClick={pasteToPi} title="Text aus der Windows-Zwischenablage an den Pi übergeben"><ClipboardText size={17}/><span>An Pi</span></button>
-     <label className="screen-share" aria-label="Zwischenablage teilen" title={clipboardSeen?'Der Pi hat bereits Text gesendet.':'Der Pi sendet erst Text, wenn dort etwas kopiert wird. Nur Text, keine Dateien.'}><input type="checkbox" checked={shareClipboard} onChange={e=>setShareClipboard(e.target.checked)}/><span>Zwischenablage teilen</span></label>
-
-    </span>
+      <button className="mic-toggle" aria-label="Mikrofon" aria-pressed={mic.on} disabled={!connected&&!mic.on} onClick={()=>mic.on?mic.disable():mic.enable()} title={mic.on?(mic.state==='waiting'?'Mikro wartet auf die Verbindung · ausschalten':'Windows-Mikrofon geht an den Pi · ausschalten'):'Windows-Mikrofon an den Pi senden'}><Microphone size={17} weight={mic.on?'fill':'regular'}/>{mic.on&&<i className="mic-dot"/>}</button>
+      <button className="mic-menu-toggle" aria-label="Mikrofon wählen" aria-haspopup="menu" aria-expanded={micMenu} onClick={()=>{if(!micMenu)mic.list();setMicMenu(o=>!o);}}><CaretDown size={11} weight="bold"/></button>
+      {micMenu&&<span className="mic-menu" role="menu">
+       {[{deviceId:'',label:'Standard (Windows-Standardgerät)'},...mic.devices].map(d=><button key={d.deviceId||'default'} role="menuitemradio" aria-checked={mic.device===d.deviceId} onClick={()=>{setMicMenu(false);mic.choose(d.deviceId);}}><span className="mic-menu-check">{mic.device===d.deviceId&&<Check size={13} weight="bold"/>}</span>{d.label||'Mikrofon'}</button>)}
+      </span>}
+     </span>,
+     quality:<label className="screen-quality" title="Bildqualität: höher ist schärfer, braucht aber mehr Bandbreite. Die Auflösung selbst legt der Pi fest."><span>Qualität</span><input type="range" min="0" max="9" step="1" value={quality} aria-label="Bildqualität" onChange={e=>setQuality(Number(e.target.value))}/><output>{quality}</output></label>,
+     connection:connected||busy||status==='credentials'?<button className="screen-tool" onClick={disconnect} title="Nur die Bildschirmverbindung trennen; SSH bleibt verbunden"><Plug size={17}/><span>Trennen</span></button>:<button className="screen-tool accent" disabled={!bridge} onClick={connect}><PlugsConnected size={17}/><span>Verbinden</span></button>,
+     share:<label className="screen-share" aria-label="Zwischenablage teilen" title={clipboardSeen?'Der Pi hat bereits Text gesendet.':'Der Pi sendet erst Text, wenn dort etwas kopiert wird. Nur Text, keine Dateien.'}><input type="checkbox" checked={shareClipboard} onChange={e=>setShareClipboard(e.target.checked)}/><span>Zwischenablage teilen</span></label>,
+     paste:<button className="screen-tool" disabled={!connected} onClick={pasteToPi} title="Text aus der Windows-Zwischenablage an den Pi übergeben"><ClipboardText size={17}/><span>An Pi</span></button>,
+     scale:<button className="screen-tool" aria-pressed={scale==='fit'} onClick={()=>setScale(s=>s==='fit'?'native':'fit')} title={scale==='fit'?'An Fenster angepasst · auf Originalgröße wechseln':'Originalgröße 1:1 · an Fenster anpassen'}>{scale==='fit'?<ArrowsIn size={17}/>:<ArrowsOut size={17}/>}<span>{scale==='fit'?'Angepasst':'1:1'}</span></button>,
+    }[id]}</span>)}
    </span>
   </header>
   <section className="screen-canvas" ref={host} aria-label={'Pi-Desktop '+alias}/>

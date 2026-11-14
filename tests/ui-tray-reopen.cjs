@@ -124,7 +124,10 @@ const {chromium}=load('playwright');
   await page.getByRole('button',{name:'SSH-Zugang erklären',exact:true}).click();
   await page.locator('#screen-access-help').waitFor();
   assert((await page.locator('#screen-access-help').innerText()).includes('Sicherheitsschlüssel'));
-  await page.locator('#screen-access-help').waitFor({state:'detached',timeout:6500});
+  // A second click on the i closes it right away; it no longer closes by itself.
+  await page.waitForTimeout(5600);assert.equal(await page.locator('#screen-access-help').count(),1,'Help stays open until clicked again');
+  await page.getByRole('button',{name:'SSH-Zugang erklären',exact:true}).click();
+  await page.locator('#screen-access-help').waitFor({state:'detached',timeout:1000});
   assert.equal(await page.getByRole('button',{name:'SSH-Zugang erklären',exact:true}).getAttribute('aria-expanded'),'false');
   await page.getByRole('button',{name:/Externer Viewer \(Rückfall\)/}).click();
   await page.getByRole('heading',{name:'Externer Viewer',exact:true}).waitFor();

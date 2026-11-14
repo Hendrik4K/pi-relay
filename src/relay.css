@@ -261,3 +261,35 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .screen-mic{margin-right:4px}
 .screen-title .screen-os{flex-shrink:0}@media(max-width:1150px){.mic-device{max-width:96px}}
 .mic-level{width:46px}
+
+/* Toolbar v2: compact microphone pill (meter left, mic, menu arrow right) and arrangeable tools. */
+.screen-toolbar{overflow:visible;position:relative;z-index:5}
+.tool-slot{display:inline-flex;align-items:center;border-radius:9px;touch-action:none}
+.mic-button{position:relative;height:32px;display:inline-flex;align-items:center;border-radius:8px;background:#ffffff07;border:1px solid #b79aac30;color:#ddd0dc}
+.mic-button.on{border-color:#ff5d7380;color:#ff5d73;background:#ff3b5514}
+.mic-button .mic-toggle{position:relative;height:30px;display:inline-flex;align-items:center;padding:0 8px;background:none;border:0;color:inherit}
+.mic-button .mic-level{margin-left:9px;width:42px}
+.mic-menu-toggle{height:30px;width:22px;display:inline-flex;align-items:center;justify-content:center;background:none;border:0;border-left:1px solid #b79aac30;color:inherit;border-radius:0 7px 7px 0}
+.mic-button:hover,.mic-menu-toggle:hover{background-color:#ffffff10}
+.mic-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:240px;max-width:340px;display:grid;padding:5px;border-radius:10px;background:#211b25f7;border:1px solid #ffffff1f;box-shadow:0 14px 34px #000a;z-index:20}
+.mic-menu button{display:flex;align-items:center;gap:7px;text-align:left;padding:7px 9px;border-radius:7px;background:none;border:0;color:#e8dde9;font:12px 'Segoe UI',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mic-menu button:hover{background:#ffffff12}.mic-menu-check{width:14px;display:inline-flex;color:#ff5d73}
+.mic-device,.screen-mic{display:none}
+/* Arrange mode: everything wiggles; the dragged tool lifts, the target is outlined. */
+.screen-tools.editing .tool-slot{animation:tool-wiggle .32s ease-in-out infinite alternate;cursor:grab}
+.screen-tools.editing .tool-slot:nth-child(even){animation-delay:-.16s}
+.screen-tools.editing .tool-slot>*{pointer-events:none}
+.tool-slot.dragging{opacity:.55;cursor:grabbing}.tool-slot.drop-target{outline:2px dashed #e54871;outline-offset:2px}
+@keyframes tool-wiggle{from{transform:rotate(-1.6deg)}to{transform:rotate(1.6deg)}}
+[data-motion=false] .screen-tools.editing .tool-slot{animation:none;outline:1px dashed #b79aac80;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.screen-tools.editing .tool-slot{animation:none;outline:1px dashed #b79aac80;outline-offset:2px}}
+
+/* "Minimiert starten": text first, box on the right. */
+.check-label.check-after{gap:8px}
+/* Viewer and Pi VNC server cards: joined like the main route on home - one solid bracket, grey while
+   disconnected, red while connected with the same ping-and-answer light (top card -> bottom card -> back). */
+.screen-chain:before{border-style:solid}
+.screen-chain.live:after{content:'';position:absolute;left:2px;top:30px;bottom:27px;width:12px;border:solid transparent;border-width:3px 0 3px 3px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,transparent 40%,#ffd3df 50%,transparent 60%) border-box;background-size:100% 300%;-webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0) border-box;-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) padding-box exclude,linear-gradient(#000 0 0) border-box;animation:chain-ping 4.6s infinite;pointer-events:none}
+@keyframes chain-ping{0%{background-position:0 100%;animation-timing-function:ease-in}34%{background-position:0 0;animation-timing-function:ease-out}68%,100%{background-position:0 100%}}
+[data-motion=false] .screen-chain.live:after{animation:none;display:none}
+@media(prefers-reduced-motion:reduce){.screen-chain.live:after{animation:none;display:none}}

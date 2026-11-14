@@ -112,8 +112,13 @@ function mockHost(){
   const chunk=await page.evaluate(()=>window.__relayMessages.find(m=>m.action==='micChunk').data);
   assert.equal(Buffer.from(chunk,'base64').length,1920,'20 ms at 48 kHz mono 16 bit');
   assert.equal(await micToggle.getAttribute('aria-pressed'),'true');assert.equal(await page.locator('.mic-dot').count(),1,'Red marker while on');
-  assert(await page.locator('.mic-device option').count()>=1,'Recording devices listed');
-  const remembered=await page.evaluate(()=>localStorage.getItem('pi-relay-mic-device'));assert(remembered,'Device remembered by id');
+  // Device menu behind the arrow: Windows default on top, then the devices; a choice is remembered by id.
+  await page.locator('.mic-menu-toggle').click();
+  const items=page.locator('.mic-menu [role=menuitemradio]');await items.first().waitFor();
+  assert.equal(await items.first().innerText(),'Standard (Windows-Standardgerät)');assert(await items.count()>=2,'Recording devices listed');
+  await items.nth(1).click();await page.locator('.mic-menu').waitFor({state:'detached'});
+  const remembered=await page.evaluate(()=>localStorage.getItem('pi-relay-mic-device'));assert(remembered,'Chosen device remembered by id');
+  assert.equal(await page.locator('.mic-button .mic-level').count(),1,'Meter sits inside the microphone button');
   await micToggle.click();
   await page.waitForFunction(()=>window.__relayMessages.some(m=>m.action==='micStop'));
   const sent=await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='micChunk').length);await page.waitForTimeout(300);
@@ -122,6 +127,20 @@ function mockHost(){
   await page.waitForFunction(()=>document.querySelector('.mic-toggle').getAttribute('aria-pressed')==='false');
   assert((await page.locator('.screen-notice').innerText()).includes('nicht bereit'),'Receiver not ready: switch off with a reason');
   await page.evaluate(()=>{window.__micFails=false;});
+
+  // Toolbar: default order, hold 3 s to arrange, drag one tool onto another to swap, Esc ends, order kept.
+  const order=()=>page.evaluate(()=>[...document.querySelectorAll('.tool-slot')].map(e=>e.dataset.tool));
+  assert.deepEqual(await order(),['mic','quality','connection','share','paste','scale'],'Default toolbar order');
+  const scaleTool=page.locator('.tool-slot[data-tool=scale]'),sb=await scaleTool.boundingBox();
+  await page.mouse.move(sb.x+sb.width/2,sb.y+sb.height/2);await page.mouse.down();await page.waitForTimeout(3200);await page.mouse.up();
+  assert(await page.locator('.screen-tools.editing').count()===1,'Holding 3 s starts arranging');
+  assert.equal(await page.locator('.screen-tool[aria-pressed]').first().getAttribute('aria-pressed'),'true','The long press did not toggle the tool');
+  const mb=await page.locator('.tool-slot[data-tool=mic]').boundingBox(),sb2=await scaleTool.boundingBox();
+  await page.mouse.move(sb2.x+sb2.width/2,sb2.y+sb2.height/2);await page.mouse.down();await page.mouse.move(mb.x+mb.width/2,mb.y+mb.height/2,{steps:6});await page.mouse.up();
+  assert.deepEqual(await order(),['scale','quality','connection','share','paste','mic'],'Dragging swaps two tools');
+  await page.keyboard.press('Escape');assert.equal(await page.locator('.screen-tools.editing').count(),0,'Esc ends arranging');
+  assert.deepEqual(JSON.parse(await page.evaluate(()=>localStorage.getItem('pi-relay-toolbar-order'))),['scale','quality','connection','share','paste','mic'],'Order is saved');
+  await page.evaluate(()=>localStorage.removeItem('pi-relay-toolbar-order'));
 
   await page.setViewportSize({width:600,height:520});await page.waitForTimeout(250);
   box=await mapsPointer(700,120,'Fit 600px');
@@ -240,6 +259,6 @@ function mockHost(){
   assert((await plain.locator('.screen-status').innerText()).includes('Nur in der App'));
   await plain.close();
   assert.equal(browser.contexts().length,1);
-  console.log('PASS: microphone switch (off by default, 20 ms 48 kHz mono chunks, remembered device, red marker, stop, receiver-not-ready), file drop to Pi inbox (overlay, chunks, intact, path to Pi clipboard), aspect fit requests (connect, resize end, not in 1:1), quality slider to server and remembered, real noVNC frame, pointer mapping (fit 1000/600 px, 1:1), aspect ratio, 480 px toolbar, German keysyms, key release on deactivate, clipboard both ways with Latin-1 notice, F11 fullscreen not forwarded, disconnect/explicit reconnect, honest error without retry, in-memory VNC password, browser-only state.');
+  console.log('PASS: toolbar order and long-press arranging (swap, Esc, saved), microphone switch (menu with Windows default, off by default, 20 ms 48 kHz mono chunks, remembered device, red marker, stop, receiver-not-ready), file drop to Pi inbox (overlay, chunks, intact, path to Pi clipboard), aspect fit requests (connect, resize end, not in 1:1), quality slider to server and remembered, real noVNC frame, pointer mapping (fit 1000/600 px, 1:1), aspect ratio, 480 px toolbar, German keysyms, key release on deactivate, clipboard both ways with Latin-1 notice, F11 fullscreen not forwarded, disconnect/explicit reconnect, honest error without retry, in-memory VNC password, browser-only state.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
