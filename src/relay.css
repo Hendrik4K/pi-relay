@@ -344,10 +344,43 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .clipboard-switches{display:grid;gap:3px;justify-items:end;flex-shrink:0}
 .clipboard-switches label{display:flex;align-items:center;gap:9px;font-size:12px;line-height:1.2;color:var(--muted);white-space:nowrap;cursor:pointer}
 /* Four settings rows (with the clipboard switches) fit the fixed panel height without scrolling. */
-.view-settings .setting{padding:10px 0}.view-settings .setting:first-child{padding-top:2px}
+.view-settings .setting{padding:9px 0}.view-settings .setting:first-child{padding-top:2px}
 /* Project folder the Pi would refuse: a short hint right at the field. */
 .field-hint{font-size:11px;line-height:1.4;color:#f2a3b6}.field input[aria-invalid="true"]{border-color:#d5445e}
 /* Staged build: one compact line with the button beside it; the restart confirmation takes the full width. */
 .integrated-staged{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-top:7px;padding-top:7px}
 .integrated-staged>.update-install{padding-top:5px;padding-bottom:5px}
 .integrated-staged .integrated-confirm{flex-basis:100%}
+/* Optional FPS display beside the connection status. */
+.screen-fps{font:600 11px 'Cascadia Code',Consolas,monospace;margin-left:10px;white-space:nowrap;transition:color .6s}
+/* Viewer bar badge: the Pi's VNC server (or noVNC until known), or the frame rate when that is switched on.
+   Larger than before, still within the bar's height. */
+.screen-mark{margin-right:56px}.screen-mark b{left:13px;right:auto;bottom:-5px;font-size:12px;line-height:1.25;padding:1px 6px;border-radius:5px;white-space:nowrap}
+.screen-mark b.fps{background:#1b171f;border-width:1.5px;font-family:'Cascadia Code',Consolas,monospace;font-weight:700;transition:color .6s,border-color .6s}
+/* Pi name with a slim connection bar under it (green, red, amber); the status text slides out on hover. */
+.screen-hostline{display:inline-flex;align-items:center;cursor:default}
+.screen-host{position:relative;z-index:0}
+.screen-host-probe{display:inline-block;width:0;height:0;vertical-align:baseline}
+.screen-host-bar{position:absolute;left:0;right:0;z-index:-1;border-radius:1px;background:#776b7b;overflow:hidden;transition:background .4s,box-shadow .4s}
+.screen-hostline.connected .screen-host-bar{background:#38d86c;box-shadow:0 0 6px #38d86c55}
+.screen-hostline.connecting .screen-host-bar,.screen-hostline.credentials .screen-host-bar,.screen-hostline.waiting .screen-host-bar{background:#dba45f}
+.screen-hostline.error .screen-host-bar,.screen-hostline.disconnected .screen-host-bar{background:#ef5b80;box-shadow:0 0 6px #ef5b8044}
+.screen-hostline.connected .screen-host-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,#ffffffb0 50%,transparent);transform:translateX(-100%);animation:host-shimmer 7s ease-in-out infinite}
+@keyframes host-shimmer{0%,80%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+@media(prefers-reduced-motion:reduce){.screen-hostline .screen-host-bar::after{animation:none;display:none}}
+.screen-hostline .screen-status{max-width:0;opacity:0;margin-left:0;overflow:hidden;transition:max-width .45s ease,opacity .35s ease,margin-left .45s ease}
+.screen-hostline:hover .screen-status{max-width:150px;opacity:1;margin-left:10px}
+/* The monitor icon as a little TV: the frame rate runs inside its screen, the server badge sits in front. */
+.screen-mark{width:30px;height:30px;margin-right:50px}.screen-mark b{z-index:1;bottom:-6px;left:14px}
+.screen-fps-in{position:absolute;left:4px;top:6px;width:22px;height:16px;display:flex;align-items:center;justify-content:center;z-index:0;font:700 11px 'Cascadia Code',Consolas,monospace;letter-spacing:-.3px;transition:color .6s}
+/* Server badge back to a small tag, so OS and Pi name keep their place next to the icon. */
+.screen-mark{margin-right:30px}.screen-mark b{font-size:8.5px;line-height:1.2;padding:1px 4px;border-radius:3px;bottom:-4px;left:15px}
+/* System and Pi name a step bolder (the general strong rule kept the name at semibold). */
+.screen-title .screen-os{font-weight:600;color:#cbbccd}.screen-title .screen-host{font-weight:700}
+/* Viewer bar: the server tag hangs on the right of the monitor, slim and fading in from transparent,
+   level with the OS text; system and Pi name keep their look and simply move right. */
+.screen-mark{margin-right:62px}
+.screen-mark b{left:25px;right:auto;top:50%;bottom:auto;transform:translateY(-50%);font-size:9px;line-height:1;padding:1.5px 6px 1.5px 13px;border:0;border-radius:0 4px 4px 0;background:linear-gradient(90deg,rgba(213,68,94,0) 0,#d5445e 12px);box-shadow:none}
+/* Tray: with a long server name the monitor moves further left, so the tag covers less of it. */
+.window-actions .screen-button:has(.long-server){width:72px}
+.screen-button .screen-symbol.long-server{margin-right:29px}.screen-button .screen-symbol.long-server .vnc-badge{right:-30px}

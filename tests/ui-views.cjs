@@ -150,6 +150,7 @@ const {chromium}=load('playwright');
   await page.getByRole('heading',{name:'Einstellungen',exact:true}).waitFor();
   assert.equal(await page.locator('footer').getByRole('button',{name:'Verlauf anzeigen'}).count(),1);
   assert.equal(await page.locator('footer').getByRole('button',{name:'Pi Relay beenden'}).count(),1);
+  assert(!await page.getByLabel('FPS-Anzeige im Pi-Bildschirm').isChecked(),'FPS display is off by default');
   // Clipboard: one switch per direction, both on by default.
   for(const name of ['Text vom Pi übernehmen','Windows-Text an den Pi geben'])assert(await page.getByLabel(name).isChecked(),name+' is on by default');
   await page.getByLabel('Text vom Pi übernehmen').uncheck();assert(!await page.getByLabel('Text vom Pi übernehmen').isChecked());

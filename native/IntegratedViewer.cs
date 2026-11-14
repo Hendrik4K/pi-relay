@@ -96,7 +96,7 @@ public sealed partial class IntegratedViewer {
   var staged=Staged??throw new InvalidOperationException("Kein fertig getesteter Build zum Aktivieren vorhanden.");
   var info=new ProcessStartInfo(Relaunch.PowerShell){UseShellExecute=true,WorkingDirectory=ProjectRoot!,WindowStyle=ProcessWindowStyle.Minimized};
   foreach(var arg in new[]{"-NoProfile","-ExecutionPolicy","Bypass","-File",Path.Combine(ProjectRoot!,"scripts","activate-release.ps1"),"-WaitPid",processId.ToString(),"-ExpectedVersion",staged.AppVersion})info.ArgumentList.Add(arg);
-  Process.Start(info);
+  _=Process.Start(info)??throw new IOException("Aktivierungsskript konnte nicht starten.");
  }
  private void Save(){Directory.CreateDirectory(Path.GetDirectoryName(cacheFile)!);var temp=cacheFile+".tmp";File.WriteAllText(temp,Json.Encode(cache));File.Move(temp,cacheFile,true);}
 }

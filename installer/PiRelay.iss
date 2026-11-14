@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.7.21"
+  #define AppVersion "1.7.28"
 #endif
 #ifndef ReleaseDir
   #define ReleaseDir "..\release-next"

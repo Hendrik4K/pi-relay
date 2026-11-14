@@ -39,6 +39,8 @@ public sealed class ScreenWindow : Window {
   fitTimer.Tick+=(_,_)=>AdvanceFit();
   _=Initialize();
  }
+ // Viewer options from the tray settings, applied to an open window right away.
+ public void SettingsChanged()=>Post(new{type="screenSettings",showFps=settings().ShowFps});
  public void Reveal(){Show();if(WindowState==WindowState.Minimized)WindowState=fullscreen?WindowState.Maximized:WindowState.Normal;Activate();}
  private void Post(object message){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Post(message)));return;}if(ready&&!finished)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(message));}
  // Screen bytes reach the renderer as shared memory: no base64, no JSON. The page copies them and
@@ -72,7 +74,7 @@ public sealed class ScreenWindow : Window {
  }catch(Exception e){System.Windows.MessageBox.Show(e.Message,"Pi Relay Bildschirm");Close();}}
  private async Task Handle(string json){using var document=JsonDocument.Parse(json);var r=document.RootElement;switch(r.GetProperty("action").GetString()){
   // A renderer reload restarts the RFB handshake on a fresh tunnel, but only the first load connects by itself.
-  case "screenReady":ready=true;var first=!initialized;initialized=true;if(!first)bridge.Close("Ansicht neu geladen. Erneut verbinden.");Post(new{type="screenInit",alias=Alias,version=typeof(ScreenWindow).Assembly.GetName().Version?.ToString(3),autoConnect=first,fullscreen});break;
+  case "screenReady":ready=true;var first=!initialized;initialized=true;if(!first)bridge.Close("Ansicht neu geladen. Erneut verbinden.");Post(new{type="screenInit",alias=Alias,version=typeof(ScreenWindow).Assembly.GetName().Version?.ToString(3),autoConnect=first,fullscreen,showFps=settings().ShowFps});break;
   case "screenOpen":await bridge.Open(r.TryGetProperty("auto",out var auto)&&auto.GetBoolean());break;
   case "screenSend":var data=Convert.FromBase64String(r.GetProperty("data").GetString()??"");if(data.Length>65536)throw new IOException("Datenblock zu groß");bridge.Send(data);break;
   case "screenDisconnect":bridge.Close();break;

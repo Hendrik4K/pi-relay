@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import RFB from '@novnc/novnc';
 import {ArrowClockwise,ArrowsIn,ArrowsOut,CaretDown,Check,ClipboardText,Microphone,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
 import './relay.css';
@@ -103,6 +103,8 @@ const latin1=text=>[...text].every(c=>c.charCodeAt(0)<=255);
 const QUALITY_KEY='piRelay.screenQuality',QUALITY_OPTIMUM=7;
 // Waits before each automatic reopen; a connection that holds for 10 s starts the count again.
 const RETRY_DELAYS=[1000,2000,5000,10000,10000];
+// FPS colour: yellow up to 20, green from 30, blended in between; grey while the Pi sends nothing.
+const fpsColor=fps=>{if(!fps)return '#9a8f9c';const t=Math.max(0,Math.min(1,(fps-20)/10)),mix=(a,b)=>Math.round(a+(b-a)*t);return 'rgb('+mix(245,78)+','+mix(200,224)+','+mix(75,138)+')';};
 const UPLOAD_CHUNK=768*1024,UPLOAD_LIMIT=512*1024*1024;
 function storedQuality(){try{const v=Number(localStorage.getItem(QUALITY_KEY));return Number.isInteger(v)&&v>=0&&v<=9&&localStorage.getItem(QUALITY_KEY)!==null?v:QUALITY_OPTIMUM;}catch{return QUALITY_OPTIMUM;}}
 
@@ -121,6 +123,9 @@ export function ScreenView(){
  const [dragging,setDragging]=useState(false),[transfer,setTransfer]=useState(null);
  const uploads=useRef(new Map()),transferring=useRef(false);
  const retry=useRef({attempt:0,timer:0,steady:0}),[retrying,setRetrying]=useState(0);
+ const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0);
+ // Connection bar under the Pi name: from 1 px below the baseline down to the depth of a descender.
+ const hostRef=useRef(null),[hostBar,setHostBar]=useState(null);
  const scaleRef=useRef(scale),statusRef=useRef(status),qualityRef=useRef(quality),fullscreenRef=useRef(fullscreen);scaleRef.current=scale;statusRef.current=status;qualityRef.current=quality;fullscreenRef.current=fullscreen;share.current=shareClipboard;
  // Black bars appear when the window's shape differs from the Pi desktop. Report how much the
  // host window can shrink so the scaled desktop fills it exactly (fit mode, normal window only).
@@ -143,6 +148,8 @@ export function ScreenView(){
   const pipe=new RelayChannel();channel.current=pipe;
   const client=new RFB(host.current,pipe,credentials.current?{credentials:credentials.current}:{});
   rfb.current=client;
+  // Each finished framebuffer update ends in one flip: counted for the optional FPS display.
+  try{const display=client._display,flip=display.flip.bind(display);display.flip=(...a)=>{frames.current++;return flip(...a);};}catch{}
   client.scaleViewport=scaleRef.current==='fit';client.resizeSession=false;client.clipViewport=false;client.focusOnClick=true;client.showDotCursor=true;client.background='#17151a';client.qualityLevel=qualityRef.current;client.compressionLevel=2;
   client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setRetrying(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');micRef.current.resume();if(share.current)send('screenClipboardRead',{reason:'sync'});
    clearTimeout(retry.current.steady);retry.current.steady=setTimeout(()=>{retry.current.attempt=0;},10000);});
@@ -193,7 +200,7 @@ export function ScreenView(){
  useEffect(()=>{
   if(!bridge)return;
   const receive=e=>{const m=e.data;switch(m.type){
-   case 'screenInit':setMeta(v=>({...v,version:m.version||''}));setFullscreen(Boolean(m.fullscreen));if(m.autoConnect)connect();else{setStatus('disconnected');setMessage('Ansicht neu geladen. Mit „Verbinden“ den Bildschirm erneut öffnen.');}break;
+   case 'screenInit':setMeta(v=>({...v,version:m.version||''}));setShowFps(Boolean(m.showFps));setFullscreen(Boolean(m.fullscreen));if(m.autoConnect)connect();else{setStatus('disconnected');setMessage('Ansicht neu geladen. Mit „Verbinden“ den Bildschirm erneut öffnen.');}break;
    case 'screenState':setStatus(s=>s==='credentials'?s:'connecting');setWaitSeconds(m.state==='waiting'?m.seconds||1:0);break;
    case 'screenOpened':channel.current?.opened();break;
    case 'screenData':channel.current?.receive(fromBase64(m.data));break;
@@ -205,6 +212,7 @@ export function ScreenView(){
     else setRetrying(0);
     break;
    case 'screenNotice':flash(m.message);break;
+   case 'screenSettings':setShowFps(Boolean(m.showFps));break;
    case 'screenFullscreen':setFullscreen(m.on);setToolbar(!m.on);break;
    case 'screenResizeEnd':requestFit();break;
    case 'screenUploadResult':uploads.current.get(m.id)?.(m);uploads.current.delete(m.id);break;
@@ -224,7 +232,10 @@ export function ScreenView(){
   return()=>{bridge.removeEventListener('message',receive);bridge.removeEventListener('sharedbufferreceived',shared);teardown();clearTimeout(noticeTimer.current);clearTimeout(retry.current.timer);clearTimeout(retry.current.steady);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[]);
+ const hostName=meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm';
+ useLayoutEffect(()=>{const el=hostRef.current,probe=el?.querySelector('.screen-host-probe');if(!probe)return;const size=parseFloat(getComputedStyle(el).fontSize)||16;setHostBar({top:probe.offsetTop+1,height:Math.max(2,Math.round(size*0.25)-1)});},[hostName,fullscreen]);
  useEffect(()=>{if(rfb.current)rfb.current.scaleViewport=scale==='fit';},[scale]);
+ useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;const t=setInterval(()=>{setFps(frames.current);frames.current=0;},1000);return()=>clearInterval(t);},[showFps,status]);
  useEffect(()=>{if(rfb.current)rfb.current.qualityLevel=quality;try{localStorage.setItem(QUALITY_KEY,String(quality));}catch{}},[quality]);
  useEffect(()=>{
   // F11 is the viewer's own shortcut; everything else goes to the Pi desktop.
@@ -239,8 +250,7 @@ export function ScreenView(){
   onDragLeave={e=>{if(!e.relatedTarget)setDragging(false);}}
   onDrop={e=>{e.preventDefault();setDragging(false);const files=[...(e.dataTransfer?.files||[])];if(files.length)uploadFiles(files);}}>
   <header className="screen-toolbar">
-   <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={21}/><b>noVNC</b></span>{meta.os&&<small className="screen-os" title={meta.os}>{meta.os.replace(/^Raspberry Pi\s+/,'')}</small>}<strong className="screen-host">{meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm'}</strong></span>
-   <span className={'screen-status '+status} role="status"><i/><span className="screen-status-text">{labels[status]}</span></span>
+   <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={30}/>{showFps&&connected&&<span className="screen-fps-in" style={{color:fpsColor(fps)}} title="Bilder pro Sekunde">{fps??'–'}</span>}<b>{meta.server||'noVNC'}</b></span>{meta.os&&<small className="screen-os" title={meta.os}>{meta.os.replace(/^Raspberry Pi\s+/,'')}</small>}<span className={'screen-hostline '+status}><strong className="screen-host" ref={hostRef}>{hostName}<i className="screen-host-probe" aria-hidden="true"/><i className="screen-host-bar" style={hostBar||undefined} aria-hidden="true"/></strong><span className={'screen-status '+status} role="status"><i/><span className="screen-status-text">{labels[status]}</span></span></span></span>
    <span className={'screen-tools'+(tools.editing?' editing':'')} title={tools.editing?'Knopf auf einen anderen ziehen zum Tauschen · Esc oder Klick daneben beendet':undefined}>
     {tools.order.map(id=><span key={id} {...tools.bind(id)}>{{
      mic:<span className={'mic-button'+(mic.on?' on':'')+(mic.state==='waiting'?' waiting':'')}>

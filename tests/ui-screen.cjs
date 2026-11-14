@@ -235,6 +235,26 @@ function mockHost(){
   await canvas.click();await page.keyboard.press('F11');
   await page.waitForFunction(()=>!document.querySelector('.screen-stage.fullscreen'));
 
+  // Optional FPS display beside the status: switched on from the tray settings, counts finished updates.
+  assert.equal(await page.locator('.screen-mark b').innerText(),'x11vnc','Badge names the VNC server on the Pi');
+  await page.evaluate(()=>window.__relaySend({type:'screenSettings',showFps:true}));
+  await page.waitForFunction(()=>/^\d+$/.test(document.querySelector('.screen-mark .screen-fps-in')?.textContent||'')&&document.querySelector('.screen-mark b').textContent==='x11vnc',null,{timeout:3000});
+  {const bar=await page.locator('.screen-toolbar').boundingBox(),tag=await page.locator('.screen-mark b').boundingBox();assert(tag.y>=bar.y&&tag.y+tag.height<=bar.y+bar.height,'Badge stays inside the bar');
+   await page.screenshot({path:path.join(output,'screen-fps.png'),clip:{x:0,y:bar.y,width:420,height:bar.height}});}
+  await page.evaluate(()=>window.__relaySend({type:'screenSettings',showFps:false}));
+  await page.waitForFunction(()=>!document.querySelector('.screen-fps-in'));
+
+  // Connection bar under the Pi name (green while connected); the status text slides out on hover.
+  {const name=await page.locator('.screen-host').boundingBox(),line=await page.locator('.screen-host-bar').boundingBox();
+   assert(Math.abs(line.width-name.width)<1&&line.y>name.y+name.height*0.6&&line.y+line.height<=name.y+name.height+1,'Bar spans the name below its baseline: '+JSON.stringify({name,line}));
+   assert.equal(await page.locator('.screen-host-bar').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(56, 216, 108)','Green while connected');
+   assert((await page.locator('.screen-status').boundingBox()).width<1,'Status text tucked away');
+   const bar=await page.locator('.screen-toolbar').boundingBox();await page.screenshot({path:path.join(output,'screen-hostbar.png'),clip:{x:0,y:bar.y,width:460,height:bar.height}});
+   await page.locator('.screen-host').hover();await page.waitForTimeout(600);
+   assert((await page.locator('.screen-status').boundingBox()).width>40,'Status slides out on hover');
+   await page.screenshot({path:path.join(output,'screen-hostbar-hover.png'),clip:{x:0,y:bar.y,width:460,height:bar.height}});
+   await page.mouse.move(600,400);}
+
   // Disconnect releases only the VNC stream; reconnect is an explicit click.
   await page.getByRole('button',{name:'Trennen'}).click();
   await page.waitForFunction(()=>document.querySelector('.screen-status').textContent.includes('Getrennt'));
