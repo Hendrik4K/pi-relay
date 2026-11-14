@@ -88,6 +88,15 @@ class WorkerTests(unittest.TestCase):
    self.assertFalse(worker.vnc_server_info(root,net,lambda *c:answers[c[0]])['localOnly'])
    answers['apt-cache']='  Candidate: 0.9.17-1\n';self.assertFalse(worker.vnc_server_info(root,net,lambda *c:answers[c[0]])['update'])
 
+ def test_tigervnc_is_named_with_its_package(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);(root/'42').mkdir();net=root/'net';net.mkdir()
+   for comm,package in (('X0tigervnc','tigervnc-scraping-server'),('x0vncserver','tigervnc-scraping-server'),('Xtigervnc','tigervnc-standalone-server')):
+    (root/'42'/'comm').write_text(comm+'\n')
+    self.assertEqual(worker.screen_info(root/'nothing',root)['server'],'TigerVNC')
+    asked=[];info=worker.vnc_server_info(root,net,lambda *c:asked.append(c) or '')
+    self.assertEqual((info['server'],info['package']),('TigerVNC',package));self.assertIn(package,asked[0])
+
  @unittest.skipIf(os.name=='nt','POSIX receiver script')
  def test_mic_feed_passes_pcm_and_drops_backlog(self):
   with tempfile.TemporaryDirectory() as d:
@@ -109,17 +118,56 @@ class WorkerTests(unittest.TestCase):
    worker.perform(config,{'op':'write','args':{'path':'src/app.py','content':'print(1)'}});self.assertEqual((root/'src'/'app.py').read_text(),'print(1)')
    config['allowCommands']=True;worker.perform(config,{'op':'write','args':{'path':'.git/info/exclude','content':'x'}})
 
+ @unittest.skipIf(os.name=='nt','POSIX file modes')
+ def test_executable_linked_and_special_files(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);config={'root':d,'allowWrite':True,'allowCommands':False}
+   (root/'run.sh').write_text('echo');(root/'run.sh').chmod(0o755)
+   (root/'plain.txt').write_text('a');os.link(root/'plain.txt',root/'twin.txt')
+   for path in ('run.sh','plain.txt','twin.txt'):
+    with self.assertRaises(PermissionError,msg=path):worker.perform(config,{'op':'write','args':{'path':path,'content':'x'}})
+   os.mkfifo(root/'pipe')
+   with self.assertRaises(ValueError):worker.perform(config,{'op':'read','args':{'path':'pipe'}})
+
+ def test_project_root_limits_and_protected_paths(self):
+  with tempfile.TemporaryDirectory() as d:
+   home=Path(d).resolve();(home/'.ssh').mkdir();(home/'.ssh'/'id_ed25519').write_text('key');(home/'notes.txt').write_text('ok')
+   saved={k:os.environ.get(k) for k in ('HOME','USERPROFILE')};os.environ['HOME']=os.environ['USERPROFILE']=str(home)
+   try:
+    with self.assertRaises(PermissionError):worker.perform({'root':str(Path(home.anchor))},{'op':'list','args':{}})
+    for rights in ({'allowWrite':True},{'allowCommands':True}):
+     with self.assertRaises(PermissionError,msg=str(rights)):worker.perform({'root':str(home),**rights},{'op':'list','args':{}})
+    self.assertEqual(worker.perform({'root':str(home)},{'op':'read','args':{'path':'notes.txt'}}),'ok')
+    for op,path in (('read','.ssh/id_ed25519'),('list','.ssh')):
+     with self.assertRaises(PermissionError,msg=op):worker.perform({'root':str(home)},{'op':op,'args':{'path':path}})
+   finally:
+    for k,v in saved.items():
+     if v is None:os.environ.pop(k,None)
+     else:os.environ[k]=v
+
  @unittest.skipIf(not hasattr(os,'getuid'),'POSIX uids')
  def test_vnc_listener_owned_by_foreign_user_is_refused(self):
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d);net=root/'net';net.mkdir();sessions=root/'sessions';sessions.mkdir()
+   net=Path(d)/'net';net.mkdir()
    head='  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n'
    def listen(uid):(net/'tcp').write_text(head+'   0: 0100007F:170C 00000000:0000 0A 00000000:00000000 00:00000000 00000000 %5d        0 1\n'%uid)
-   listen(os.getuid());worker.vnc_listener_check(5900,net,sessions)
-   listen(0);worker.vnc_listener_check(5900,net,sessions)
+   listen(os.getuid());worker.vnc_listener_check(5900,net)
+   listen(0);worker.vnc_listener_check(5900,net)
    listen(4242)
-   with self.assertRaises(PermissionError):worker.vnc_listener_check(5900,net,sessions)
-   (sessions/'c2').write_text('UID=4242\nTYPE=x11\nSTATE=active\n');worker.vnc_listener_check(5900,net,sessions)
-   (net/'tcp').write_text(head);worker.vnc_listener_check(5900,net,sessions)
+   with self.assertRaises(PermissionError):worker.vnc_listener_check(5900,net)
+   (net/'tcp').write_text(head);worker.vnc_listener_check(5900,net)
+   with self.assertRaises(PermissionError):worker.vnc_listener_check(5900,Path(d)/'missing')
+
+ @unittest.skipIf(not hasattr(os,'getuid'),'POSIX uids')
+ def test_vnc_peer_of_this_connection_must_be_own_user(self):
+  with tempfile.TemporaryDirectory() as d:
+   net=Path(d)/'net';net.mkdir()
+   head='  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n'
+   def rows(uid):(net/'tcp').write_text(head+'   0: 0100007F:170C 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1\n'
+    '   1: 0100007F:170C 0100007F:D431 01 00000000:00000000 00:00000000 00000000 %5d        0 2\n'%uid)
+   rows(os.getuid());worker.vnc_peer_check(0xD431,5900,net)
+   rows(4242)
+   with self.assertRaises(PermissionError):worker.vnc_peer_check(0xD431,5900,net)
+   with self.assertRaises(PermissionError):worker.vnc_peer_check(0xBEEF,5900,net)
 
 if __name__=='__main__':unittest.main()

@@ -13,10 +13,12 @@ function mockHost(){
  window.__relayMessages=[];
  const deliver=data=>events.dispatchEvent(new MessageEvent('message',{data:structuredClone(data)}));
  window.__relaySend=deliver;
- const b64=bytes=>{let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(s);};
+ // Screen bytes come as shared memory like in WebView2: getBuffer() on the event, released by the page.
+ const shared=window.__shared={posted:0,released:0};
+ function share(part){const event=new Event('sharedbufferreceived'),buffer=part.slice().buffer;event.getBuffer=()=>buffer;event.additionalData={type:'screenData'};shared.posted++;events.dispatchEvent(event);}
  const vnc=window.__vnc={security:1,keys:[],pointers:[],cut:[],frames:0,opens:0,state:'off',buffer:new Uint8Array(0),width:800,height:600};
  const u16=v=>[v>>8&255,v&255],u32=v=>[v>>>24&255,v>>16&255,v>>8&255,v&255];
- function reply(bytes){bytes=bytes instanceof Uint8Array?bytes:Uint8Array.from(bytes);for(let i=0;i<bytes.length;i+=32768){const part=bytes.subarray(i,i+32768);setTimeout(()=>deliver({type:'screenData',data:b64(part)}),0);}}
+ function reply(bytes){bytes=bytes instanceof Uint8Array?bytes:Uint8Array.from(bytes);for(let i=0;i<bytes.length;i+=262144){const part=bytes.subarray(i,i+262144);setTimeout(()=>share(part),0);}}
  window.__vncCutText=text=>reply([3,0,0,0,...u32(text.length),...[...text].map(c=>c.charCodeAt(0))]);
  function frame(){
   const {width:w,height:h}=vnc,header=[0,0,...u16(1),...u16(0),...u16(0),...u16(w),...u16(h),...u32(0)];
@@ -44,10 +46,10 @@ function mockHost(){
  }
  window.chrome=window.chrome||{};
  window.chrome.webview={
-  addEventListener:(...a)=>events.addEventListener(...a),removeEventListener:(...a)=>events.removeEventListener(...a),
+  addEventListener:(...a)=>events.addEventListener(...a),removeEventListener:(...a)=>events.removeEventListener(...a),releaseBuffer:()=>{shared.released++;},
   postMessage:m=>{
    if(m.action!=='screenSend')window.__relayMessages.push(m);
-   if(m.action==='screenReady')setTimeout(()=>deliver({type:'screenInit',alias:'MasterControl',version:'0.4.0',autoConnect:true,fullscreen:false}),0);
+   if(m.action==='screenReady')setTimeout(()=>deliver({type:'screenInit',alias:'MeinPi',version:'0.4.0',autoConnect:true,fullscreen:false}),0);
    if(m.action==='screenOpen'){vnc.opens++;vnc.state='version';vnc.buffer=new Uint8Array(0);setTimeout(()=>{deliver({type:'screenOpened'});reply([...'RFB 003.008\n'].map(c=>c.charCodeAt(0)));},5);}
    if(m.action==='screenSend'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const all=new Uint8Array(vnc.buffer.length+chunk.length);all.set(vnc.buffer);all.set(chunk,vnc.buffer.length);vnc.buffer=all;pump();}
    if(m.action==='screenUpload'){const chunk=Uint8Array.from(atob(m.data),c=>c.charCodeAt(0));const prev=(window.__uploads||={})[m.token]||new Uint8Array(0);const all=new Uint8Array(prev.length+chunk.length);all.set(prev);all.set(chunk,prev.length);window.__uploads[m.token]=all;(window.__uploadChunks||=[]).push(m.offset);setTimeout(()=>deliver({type:'screenUploadResult',id:m.id,ok:true,result:m.final?{path:'/home/pi/Desktop/'+m.name,size:all.length}:{size:all.length}}),5);}
@@ -66,12 +68,13 @@ function mockHost(){
  const output=path.resolve(__dirname,'../qa');fs.mkdirSync(output,{recursive:true});
  try{
   const page=await browser.newPage({viewport:{width:1000,height:700}});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(/Content Security Policy/i.test(m.text()))errors.push(m.text());});
   await page.addInitScript(mockHost);
-  await page.goto(base+'?screen=MasterControl');
+  await page.goto(base+'?screen=MeinPi');
   const status=page.locator('.screen-status');
   await page.waitForFunction(()=>document.querySelector('.screen-status')?.textContent.includes('Verbunden')&&window.__vnc.frames>0);
   await page.waitForTimeout(150);
+  assert(await page.evaluate(()=>window.__shared.posted>0&&window.__shared.posted===window.__shared.released),'Screen bytes arrive as shared buffers and every buffer is released');
   const canvas=page.locator('.screen-canvas canvas');
   // Left half red, right half blue: the received frame is actually drawn.
   const sample=await canvas.evaluate(c=>{const ctx=c.getContext('2d');return[[...ctx.getImageData(200,300,1,1).data],[...ctx.getImageData(600,300,1,1).data]];});
@@ -92,7 +95,7 @@ function mockHost(){
   assert((await page.locator('.screen-title').getAttribute('title')).includes('Pi Relay 0.4.0'),'Version info lives in the title tooltip');
   await page.locator('.screen-host',{hasText:'raspberrypi'}).waitFor();
   assert.equal(await page.locator('.screen-os').innerText(),'OS Trixie','The Pi context is implied: no "Raspberry Pi" prefix');
-  assert(!(await page.locator('.screen-title').innerText()).includes('MasterControl'),'Access name only in the window title');
+  assert(!(await page.locator('.screen-title').innerText()).includes('MeinPi'),'Access name only in the window title');
   assert.equal((await page.locator('.screen-status').innerText()).trim(),'Verbunden','Status shows only the state');
   {const mic=await page.locator('.mic-toggle').boundingBox(),trennen=await page.getByRole('button',{name:'Trennen'}).boundingBox();assert(mic.x<trennen.x,'Microphone sits left of Trennen');}
   assert.equal(await page.locator('.screen-host').evaluate(e=>getComputedStyle(e).color),'rgb(226, 87, 127)');
@@ -157,8 +160,13 @@ function mockHost(){
   await page.waitForFunction(n=>window.__relayMessages.filter(m=>m.action==='screenFit').length>n,fits);
   const fit=await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='screenFit').at(-1));
   assert(Math.abs(fit.dw-(Math.round(454*4/3)-1000))<=1&&fit.dh===0,'Resize-end fit: '+JSON.stringify(fit));
-  // Quality slider: sent to the server as noVNC quality pseudo-encoding and remembered.
+  // Quality slider: starts at the measured optimum (green rim on the knob), sent to the server as
+  // noVNC quality pseudo-encoding and remembered.
+  const optimal=()=>page.getByLabel('Bildqualität').evaluate(e=>e.classList.contains('optimal'));
+  assert.equal(await page.getByLabel('Bildqualität').inputValue(),'7','Default quality is the measured optimum');
+  assert(await optimal(),'Knob on the optimum gets the green rim');
   await page.getByLabel('Bildqualität').fill('9');
+  assert(!await optimal(),'No green rim away from the optimum');
   await page.waitForFunction(()=>window.__vnc.encodings?.includes(-23));
   assert.equal(await page.evaluate(()=>localStorage.getItem('piRelay.screenQuality')),'9');
   await page.getByLabel('Bildqualität').fill('6');
@@ -234,11 +242,18 @@ function mockHost(){
   await page.getByRole('button',{name:'Neu verbinden'}).click();
   await page.waitForFunction(()=>window.__vnc.opens===2&&document.querySelector('.screen-status').textContent.includes('Verbunden'));
 
-  // A host-side failure is shown honestly and is not retried automatically.
-  await page.evaluate(()=>window.__relaySend({type:'screenClosed',error:true,message:'SSH-Verbindung zum Pi beendet.'}));
+  // The Pi ends the picture while SSH still stands (VNC server restarted): the viewer reopens by
+  // itself over the existing connection, marked as automatic for the host.
+  await page.evaluate(()=>window.__relaySend({type:'screenClosed',error:false,message:'Der Pi hat die Bildschirmverbindung beendet.',retry:true}));
+  await page.getByText('Bild unterbrochen · verbinde neu …').waitFor();
+  await page.waitForFunction(()=>window.__vnc.opens===3&&document.querySelector('.screen-status').textContent.includes('Verbunden'),null,{timeout:5000});
+  assert.equal(await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='screenOpen').at(-1).auto),true,'Automatic reopen is marked for the host');
+
+  // A host-side failure without a live SSH connection is shown honestly and is not retried.
+  await page.evaluate(()=>window.__relaySend({type:'screenClosed',error:true,message:'SSH-Verbindung zum Pi beendet.',retry:false}));
   await page.waitForFunction(()=>document.querySelector('.screen-status').textContent.includes('Fehler'));
   assert((await page.locator('.screen-card').innerText()).includes('SSH-Verbindung zum Pi beendet.'));
-  await page.waitForTimeout(800);assert.equal(await page.evaluate(()=>window.__vnc.opens),2,'No automatic reconnect');
+  await page.waitForTimeout(1300);assert.equal(await page.evaluate(()=>window.__vnc.opens),3,'No automatic reconnect without SSH');
 
   // VNC password: asked in the window, kept in memory, never sent to the native host.
   await page.evaluate(()=>{window.__vnc.security=2;});
@@ -253,11 +268,11 @@ function mockHost(){
 
   // Without the native host nothing pretends to connect.
   const plain=await browser.newPage({viewport:{width:700,height:500}});
-  await plain.goto(base+'?screen=MasterControl');
+  await plain.goto(base+'?screen=MeinPi');
   await plain.getByText('Integrierter Viewer',{exact:true}).waitFor();
   assert((await plain.locator('.screen-status').innerText()).includes('Nur in der App'));
   await plain.close();
   assert.equal(browser.contexts().length,1);
-  console.log('PASS: toolbar order and long-press arranging (swap, Esc, saved), microphone switch (menu with Windows default, off by default, 20 ms 48 kHz mono chunks, remembered device, red marker, stop, receiver-not-ready), file drop to Pi inbox (overlay, chunks, intact, path to Pi clipboard), aspect fit requests (connect, resize end, not in 1:1), quality slider to server and remembered, real noVNC frame, pointer mapping (fit 1000/600 px, 1:1), aspect ratio, 480 px toolbar, German keysyms, key release on deactivate, clipboard both ways with Latin-1 notice, F11 fullscreen not forwarded, disconnect/explicit reconnect, honest error without retry, in-memory VNC password, browser-only state.');
+  console.log('PASS: toolbar order and long-press arranging (swap, Esc, saved), microphone switch (menu with Windows default, off by default, 20 ms 48 kHz mono chunks, remembered device, red marker, stop, receiver-not-ready), file drop to Pi inbox (overlay, chunks, intact, path to Pi clipboard), aspect fit requests (connect, resize end, not in 1:1), quality slider (starts at the marked optimum 7) to server and remembered, real noVNC frame via shared buffers (all released), pointer mapping (fit 1000/600 px, 1:1), aspect ratio, 480 px toolbar, German keysyms, key release on deactivate, clipboard both ways with Latin-1 notice, F11 fullscreen not forwarded, disconnect/explicit reconnect, automatic reopen while SSH stands, honest error without retry, no CSP violations, in-memory VNC password, browser-only state.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -124,9 +124,10 @@ public sealed class ViewerUpdates {
   }
   catch(Exception e){Error="Viewer nicht geändert: "+e.Message;throw;}finally{if(temp!=null&&File.Exists(temp))File.Delete(temp);Busy=false;Phase="";changed();gate.Release();}
  }
+ internal const string RealVncPublisher="RealVNC Ltd";
  private static async Task ValidateRealVncSignature(string file){
   // The selected file is passed as environment data, never as PowerShell code.
-  var command=@"$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'); $s=Get-AuthenticodeSignature -LiteralPath $env:PI_RELAY_SIGNATURE_FILE; [pscustomobject]@{status=$s.Status.ToString();subject=$s.SignerCertificate.Subject} | ConvertTo-Json -Compress";
+  var command=@"$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'); $s=Get-AuthenticodeSignature -LiteralPath $env:PI_RELAY_SIGNATURE_FILE; [pscustomobject]@{status=$s.Status.ToString();publisher=$(if($s.SignerCertificate){$s.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false)}else{''})} | ConvertTo-Json -Compress";
   var info=Discovery.StartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),"System32","WindowsPowerShell","v1.0","powershell.exe"),"-NoLogo","-NoProfile","-NonInteractive","-Command",command);
   info.Environment["PI_RELAY_SIGNATURE_FILE"]=file;
   // A PowerShell 7 parent can otherwise make Windows PowerShell 5 load the
@@ -135,7 +136,8 @@ public sealed class ViewerUpdates {
   using var process=Process.Start(info)??throw new IOException("Signaturprüfung konnte nicht starten");var output=process.StandardOutput.ReadToEndAsync();var errors=process.StandardError.ReadToEndAsync();
   using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20));try{await process.WaitForExitAsync(timeout.Token);}catch{try{process.Kill(true);}catch{}throw new IOException("Zeitlimit bei der Signaturprüfung");}
   var text=await output;var detail=(await errors).Trim();if(process.ExitCode!=0)throw new IOException("Signaturprüfung fehlgeschlagen: "+detail[..Math.Min(detail.Length,400)]);
-  using var result=JsonDocument.Parse(text);if(result.RootElement.GetProperty("status").GetString()!="Valid"||!(result.RootElement.GetProperty("subject").GetString()??"").Contains("RealVNC",StringComparison.OrdinalIgnoreCase))throw new IOException("Keine gültige RealVNC-Herstellersignatur gefunden");
+  // "Valid" is WinVerifyTrust's full chain check; the publisher must match RealVNC's certificate name exactly.
+  using var result=JsonDocument.Parse(text);if(result.RootElement.GetProperty("status").GetString()!="Valid"||result.RootElement.GetProperty("publisher").GetString()!=RealVncPublisher)throw new IOException("Keine gültige RealVNC-Herstellersignatur gefunden");
  }
  private static void ValidateExecutable(string file,ViewerRelease release){
   using(var input=new BinaryReader(File.OpenRead(file))){if(input.ReadUInt16()!=0x5A4D)throw new IOException("Download ist keine Windows-Anwendung");input.BaseStream.Position=0x3c;var pe=input.ReadUInt32();if(pe>input.BaseStream.Length-8)throw new IOException("Ungültige Windows-Anwendung");input.BaseStream.Position=pe;if(input.ReadUInt32()!=0x4550)throw new IOException("Ungültige Windows-Anwendung");var machine=input.ReadUInt16();if(machine!=0x8664&&(release.Provider!="realvnc-classic"||machine!=0x14c))throw new IOException("Kein kompatibler Windows-Viewer");}

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.7.18"
+  #define AppVersion "1.7.21"
 #endif
 #ifndef ReleaseDir
   #define ReleaseDir "..\release-next"
@@ -80,6 +80,30 @@ function HasAutostart: Boolean;
 var Existing: String;
 begin
   Result := RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'PiRelay', Existing) and (Existing <> '');
+end;
+
+// Only inside the user's own profile: a folder such as C:\PiRelay inherits write access for every
+// account on this PC, so someone else could replace PiRelay.exe.
+function InsideProfile(Dir: String): Boolean;
+var Profile: String;
+begin
+  Profile := AddBackslash(ExpandConstant('{%USERPROFILE}'));
+  Result := CompareText(Copy(AddBackslash(Dir), 1, Length(Profile)), Profile) = 0;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpSelectDir) and not InsideProfile(WizardDirValue) then begin
+    MsgBox('Bitte einen Ordner in deinem Benutzerprofil wählen, zum Beispiel ' + ExpandConstant('{localappdata}\Programs\Pi Relay') + '. Ordner wie C:\PiRelay könnten andere Konten dieses PCs verändern.', mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  if InsideProfile(ExpandConstant('{app}')) then Result := ''
+  else Result := 'Pi Relay wird nur in deinem Benutzerprofil installiert (' + ExpandConstant('{%USERPROFILE}') + ').';
 end;
 
 procedure InitializeWizard;

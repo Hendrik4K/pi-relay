@@ -47,12 +47,16 @@ public sealed class SharedSession : IDisposable {
    using var resource=typeof(SharedSession).Assembly.GetManifestResourceStream("PiRelay.remote_worker.py")??throw new IOException("SSH-Worker fehlt");
    using var reader=new StreamReader(resource);var code=await reader.ReadToEndAsync();
    var bootstrap="import base64;exec(base64.b64decode("+Quote(Convert.ToBase64String(Encoding.UTF8.GetBytes(code)))+"))";
-   var command="python3 -u -c "+Quote(bootstrap);
-   var info=Discovery.StartInfo(Discovery.SshExe,"-T","-o","StrictHostKeyChecking=yes","-o","ConnectTimeout=15","-o","ConnectionAttempts=1","-o","ServerAliveInterval=30","-o","ServerAliveCountMax=10",Alias,command);
+   // -I: no imports from the home folder or user site-packages, no PYTHON* variables.
+   var command="python3 -I -u -c "+Quote(bootstrap);
+   // Screen data is already compressed (JPEG/zlib); SSH compression would only add delay. Forwardings
+   // from ~/.ssh/config (agent, X11, ports, LocalCommand) never apply to this dedicated transport.
+   var info=Discovery.StartInfo(Discovery.SshExe,"-T","-a","-x","-o","ClearAllForwardings=yes","-o","PermitLocalCommand=no","-o","StrictHostKeyChecking=yes","-o","Compression=no","-o","ConnectTimeout=15","-o","ConnectionAttempts=1","-o","ServerAliveInterval=30","-o","ServerAliveCountMax=10",Alias,command);
    info.RedirectStandardInput=true;
    var handshake=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);welcome=handshake;
    var owner=Process.Start(launch?.Invoke(Alias)??info)??throw new IOException("SSH konnte nicht starten");process=owner;owner.StandardInput.AutoFlush=true;
-   _=ReadErrors(owner);_=ReadMessages(owner);
+   // Read off the UI thread, so window work never holds up the screen stream (and the reverse).
+   _=Task.Run(()=>ReadErrors(owner));_=Task.Run(()=>ReadMessages(owner));
    await handshake.Task.WaitAsync(TimeSpan.FromSeconds(80));
    State="ready";LastError="";changed();
   }catch(Exception e){LastError=e.Message;Stop();State="error";changed();throw;}finally{connect.Release();}
@@ -60,16 +64,17 @@ public sealed class SharedSession : IDisposable {
  private async Task ReadErrors(Process owner){try{while(await owner.StandardError.ReadLineAsync() is {} line){if(!string.IsNullOrWhiteSpace(line))lastErrorLine=line.Length>300?line[..300]:line.Trim();if(State=="connecting"&&(line.Contains("Confirm user presence")||line.Contains("Enter PIN"))){State="key";changed();}if(line.Contains("Permission denied")||line.Contains("signing failed")||line.Contains("Host key verification failed")||line.Contains("Error:"))LastError=line.Length>400?line[..400]:line;}}catch{}}
  private async Task ReadMessages(Process owner){
   try{
-   while(await owner.StandardOutput.ReadLineAsync() is {} line){
-    if(line.Length>3000000)throw new IOException("Antwort zu groß");
+   var output=new WorkerOutput(owner.StandardOutput.BaseStream);
+   while(await output.ReadLine(3000000) is {} line){
     using var doc=JsonDocument.Parse(line);var value=doc.RootElement;
-    if(value.TryGetProperty("ready",out _)){if(value.GetProperty("protocol").GetInt32()!=2)throw new IOException("Unbekanntes Verbindungsprotokoll");welcome?.TrySetResult(true);continue;}
+    if(value.TryGetProperty("ready",out _)){if(value.GetProperty("protocol").GetInt32()!=3)throw new IOException("Unbekanntes Verbindungsprotokoll");welcome?.TrySetResult(true);continue;}
     if(value.TryGetProperty("event",out var ev)){
      switch(ev.GetString()){
       case "terminal_output":var data=value.GetProperty("data").GetString()!;var bytes=Convert.FromBase64String(data);lock(historyLock){history.Enqueue(bytes);historySize+=bytes.Length;while(historySize>262144&&history.Count>1)historySize-=history.Dequeue().Length;}TerminalOutput?.Invoke(data);break;
       case "terminal_exit":TerminalState?.Invoke("Shell beendet. Über das Terminal-Symbol erneut öffnen.");break;
-      case "tcp_data":var queue=SocketChannel(value.GetProperty("channel").GetInt32());if(!queue.Writer.TryWrite(Convert.FromBase64String(value.GetProperty("data").GetString()!)))queue.Writer.TryComplete(new IOException("VNC-Empfänger ist zu langsam"));break;
-      case "tcp_closed":SocketChannel(value.GetProperty("channel").GetInt32()).Writer.TryComplete();break;
+      // Raw screen bytes follow the header; they are always consumed so the stream stays aligned.
+      case "tcp_data":{var size=value.GetProperty("size").GetInt32();if(size<0||size>WorkerOutput.MaxBlock)throw new IOException("Antwort zu groß");var queue=SocketChannel(value.GetProperty("channel").GetInt32());if(!queue.Writer.TryWrite(await output.ReadBytes(size)))queue.Writer.TryComplete(new IOException("VNC-Empfänger ist zu langsam"));break;}
+      case "tcp_closed":{var queue=SocketChannel(value.GetProperty("channel").GetInt32());if(value.TryGetProperty("error",out var reason))queue.Writer.TryComplete(new IOException(reason.GetString()));else queue.Writer.TryComplete();break;}
      }continue;
     }
     if(value.TryGetProperty("id",out var id)&&id.TryGetInt64(out var number)&&pending.TryRemove(number,out var completion))completion.TrySetResult(value.Clone());
@@ -88,11 +93,19 @@ public sealed class SharedSession : IDisposable {
   if(!IsReady)throw new InvalidOperationException("SSH-Zugang in Pi Relay zuerst verbinden");
   var id=Interlocked.Increment(ref sequence);var completion=new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);pending[id]=completion;
   try{
-   await writes.WaitAsync();try{if(!IsReady)throw new IOException("SSH-Verbindung beendet");await process!.StandardInput.WriteLineAsync(Json.Encode(new{id,op,args=args??new{},config}));}finally{writes.Release();}
+   await Write(Json.Encode(new{id,op,args=args??new{},config}));
    var result=await completion.Task.WaitAsync(TimeSpan.FromSeconds(45));
    if(!result.GetProperty("ok").GetBoolean())throw new InvalidOperationException(result.GetProperty("error").GetString());
    return result.GetProperty("result").Clone();
   }catch(TimeoutException){throw new IOException("Zeitlimit erreicht. Der Auftrag wird nicht automatisch wiederholt.");}finally{pending.TryRemove(id,out _);}
+ }
+ // Without an id the worker sends no answer (VNC input); a failure ends that stream instead.
+ public Task Notify(string op,object args)=>Write(Json.Encode(new{op,args}));
+ // One line at a time; the process is read once because the reader may stop it meanwhile.
+ private async Task Write(string line){
+  await writes.WaitAsync();
+  try{var target=process;if(!IsReady||target==null)throw new IOException("SSH-Verbindung beendet");await target.StandardInput.WriteLineAsync(line);}
+  finally{writes.Release();}
  }
  private string? vncViewer;
  // The port is for the external viewer Pi Relay starts (`viewerExe`); connections from any other
@@ -125,7 +138,7 @@ public sealed class SharedSession : IDisposable {
  public async Task<TcpTunnel> OpenTunnel(){var opened=await Request("tcp_open");var channel=opened.GetProperty("channel").GetInt32();return new TcpTunnel(this,channel,SocketChannel(channel).Reader);}
  public const string VncMissing="VNC-Server auf dem Pi nicht aktiv";
  internal static TimeSpan VncWait=TimeSpan.FromMinutes(2),VncRetry=TimeSpan.FromSeconds(3);
- // After a Pi restart the VNC server (WayVNC or x11vnc) may start a little after the desktop
+ // After a Pi restart the VNC server (WayVNC, x11vnc or TigerVNC) may start a little after the desktop
  // login. Retry the fixed endpoint on this transport only; never a new SSH login.
  public async Task<TcpTunnel> OpenTunnelWaiting(Action<int>? waiting=null,CancellationToken token=default){
   var end=DateTime.UtcNow+VncWait;
@@ -135,7 +148,7 @@ public sealed class SharedSession : IDisposable {
     waiting?.Invoke((int)Math.Ceiling((end-DateTime.UtcNow).TotalSeconds));
     await Task.Delay(VncRetry,token);
    }
-   catch(InvalidOperationException e) when(e.Message.Contains(VncMissing)){throw new InvalidOperationException(VncMissing+" (127.0.0.1:5900). Läuft auf dem Pi der Desktop mit WayVNC oder x11vnc?");}
+   catch(InvalidOperationException e) when(e.Message.Contains(VncMissing)){throw new InvalidOperationException(VncMissing+" (127.0.0.1:5900). Läuft auf dem Pi ein VNC-Server (WayVNC, x11vnc oder TigerVNC)?");}
   }
  }
  internal static bool Unreachable(string message)=>message.StartsWith("Pi nicht erreichbar",StringComparison.Ordinal);
@@ -152,7 +165,7 @@ public sealed class SharedSession : IDisposable {
  public void Dispose(){Stop();State="disconnected";TerminalState?.Invoke("Verbindung getrennt.");changed();}
 }
 
-// The worker runs tcp_send in a pool, so each tunnel must be fed by one sequential sender.
+// Input leaves as notifications without waiting for the Pi; one sequential sender per tunnel keeps the bytes in order.
 public sealed class TcpTunnel : IAsyncDisposable {
  private readonly SharedSession owner;
  private int closed;
@@ -161,7 +174,7 @@ public sealed class TcpTunnel : IAsyncDisposable {
  public bool IsClosed=>Volatile.Read(ref closed)!=0;
  public bool TransportReady=>owner.IsReady;
  internal TcpTunnel(SharedSession owner,int channel,ChannelReader<byte[]> incoming){this.owner=owner;Channel=channel;Incoming=incoming;}
- public async Task Send(ReadOnlyMemory<byte> data){for(var offset=0;offset<data.Length;offset+=32768){if(IsClosed)throw new IOException("Bildschirmverbindung beendet");var part=data.Slice(offset,Math.Min(32768,data.Length-offset));await owner.Request("tcp_send",new{channel=Channel,data=Convert.ToBase64String(part.Span)});}}
+ public async Task Send(ReadOnlyMemory<byte> data){for(var offset=0;offset<data.Length;offset+=32768){if(IsClosed)throw new IOException("Bildschirmverbindung beendet");var part=data.Slice(offset,Math.Min(32768,data.Length-offset));await owner.Notify("tcp_send",new{channel=Channel,data=Convert.ToBase64String(part.Span)});}}
  public async ValueTask DisposeAsync(){if(Interlocked.Exchange(ref closed,1)==0)await owner.CloseTunnel(Channel);}
 }
 
@@ -183,4 +196,29 @@ public sealed class AgentSession : IDisposable {
   Interlocked.Increment(ref busy);MarkAttached();try{return await connection.Request(op,args,config);}finally{Interlocked.Decrement(ref busy);changed();}
  }
  public void Dispose(){session=null;attachedUntil=DateTime.MinValue;changed();}
+}
+
+// Worker output (protocol 3): JSON lines; a tcp_data line announces `size` raw bytes that follow it.
+internal sealed class WorkerOutput(Stream stream){
+ public const int MaxBlock=1048576;
+ private readonly byte[] buffer=new byte[65536];
+ private readonly MemoryStream line=new();
+ private int start,end;
+ public async Task<string?> ReadLine(int limit){
+  line.SetLength(0);
+  while(true){
+   var newline=Array.IndexOf(buffer,(byte)'\n',start,end-start);
+   line.Write(buffer,start,(newline<0?end:newline)-start);
+   if(line.Length>limit)throw new IOException("Antwort zu groß");
+   if(newline>=0){start=newline+1;var length=(int)line.Length;if(length>0&&line.GetBuffer()[length-1]==(byte)'\r')length--;return Encoding.UTF8.GetString(line.GetBuffer(),0,length);}
+   start=0;end=await stream.ReadAsync(buffer);
+   if(end==0)return null;
+  }
+ }
+ public async Task<byte[]> ReadBytes(int count){
+  var data=new byte[count];var filled=Math.Min(count,end-start);
+  Buffer.BlockCopy(buffer,start,data,0,filled);start+=filled;
+  while(filled<count){var read=await stream.ReadAsync(data.AsMemory(filled));if(read==0)throw new IOException("SSH-Verbindung beendet");filled+=read;}
+  return data;
+ }
 }

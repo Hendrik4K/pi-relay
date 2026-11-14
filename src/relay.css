@@ -126,7 +126,7 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .screen-quick{width:38px;height:38px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#d7cbd9}.screen-quick:hover{background:#ffffff0d;color:#fff}.screen-quick.open{color:#f07a9a}
 .backup-toggle{left:-9.5px;bottom:-9px;width:19px;height:19px;border-radius:50%;background:#2b2230;border:1.5px solid #9a7d93;color:#e1cad8;box-shadow:0 0 0 4px #17151a;z-index:3}.backup-toggle:hover{background:#4a2b3c;border-color:#ee7d99;color:#fff}.backup-toggle[aria-expanded=true]{background:#5a2338;border-color:#d8577b;color:#fff}
 .backup-toggle{left:-8.5px;bottom:4.5px;width:18px;height:18px;padding:0;background:transparent;border:1.5px solid #8e748a;box-shadow:none;color:#b9a9b8}.backup-toggle svg{width:11px;height:11px}.backup-toggle:hover,.backup-toggle[aria-expanded=true]{background:transparent;border-color:#b9a9b8;color:#e4d6e2}
-/* Main route bends at the status line; with a backup the bend is a switch node that can turn the route to BackDoor. */
+/* Main route bends at the status line; with a backup the bend is a switch node that can turn the route to Ersatzzugang. */
 .session-line.first{height:62px}.has-backup .session-line.first{border-bottom-left-radius:0}
 .has-backup .backup-toggle,.has-backup .backup-toggle:hover,.has-backup .backup-toggle[aria-expanded=true]{top:39.5px;bottom:auto;left:-8.5px;width:18px;height:18px;border:1.5px solid #ee7d99;color:#ee7d99;background:#1d1a22;box-shadow:none}
 .has-backup .backup-toggle:hover{color:#ffb3c6;border-color:#ffb3c6}
@@ -157,7 +157,7 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 @media(max-width:390px){.spec-chip.storage{display:none}}
 
 /* Route (user design, 1.7.1): dashed line from the dot under the Pi into the access name; grey until that
-   access is connected, then red. The whole gutter of the first access toggles BackDoor (+ / − on hover). */
+   access is connected, then red. The whole gutter of the first access toggles Ersatzzugang (+ / − on hover). */
 .session-line,.session-line.first,.has-backup .session-line.first{top:-13px;height:37px;width:24px;border-style:dashed;border-width:0 0 1.5px 1.5px;border-color:#8e748a99;border-radius:0 0 0 18px}
 .session-line.live,.session-line.first.live{border-color:#e54871}
 .session-line.first:before{background:#4e4652;border-color:#8e748a;transition:background .3s,border-color .3s}.session-line.first.live:before{background:#a91e45;border-color:#ee7d99}
@@ -248,7 +248,7 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
    in softly instead of beginning with a hard edge. */
 .session-line.first,.has-backup .session-line.first{top:-62px;height:90px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34px);mask-image:linear-gradient(to bottom,transparent 0,#000 34px)}
 /* The route's horizontal end meets the access name at half the height of its lowercase letters;
-   the BackDoor +/- circle sits correspondingly lower on the line. */
+   the Ersatzzugang +/- circle sits correspondingly lower on the line. */
 .session-line.first,.has-backup .session-line.first{height:94.5px}
 .has-backup .backup-toggle,.has-backup .backup-toggle:hover,.has-backup .backup-toggle[aria-expanded=true]{top:-1px}
 /* Ping and answer: the light runs Pi -> access, turns around as soon as it has left the line and runs
@@ -329,3 +329,25 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .view-screen .viewer-current>div:first-child{display:grid;gap:3px;min-width:0}
 .view-screen .viewer-current>div:first-child>span{min-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vnc-recheck.spinning svg{animation:recheck-spin .8s linear infinite}
+
+/* Quality slider drawn by hand so the measured optimum can be marked: a green dot on the track at
+   --optimum and a green rim on the knob while it sits there. Pink fill and knob as before. */
+.screen-quality input{-webkit-appearance:none;appearance:none;height:16px;background:transparent;cursor:pointer;--knob:13px;--at:calc(var(--knob)/2 + var(--q)*(100% - var(--knob))/9);--best:calc(var(--knob)/2 + var(--optimum)*(100% - var(--knob))/9)}
+.screen-quality input::-webkit-slider-runnable-track{height:7px;border-radius:4px;background:radial-gradient(circle at var(--best) 50%,#38d86c 0 2.3px,#0b3a1d80 2.6px 3.1px,transparent 3.4px),linear-gradient(90deg,#cb2d54 0 var(--at),#ebe8ec var(--at));box-shadow:inset 0 0 0 1px #0000002e}
+.screen-quality input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;box-sizing:border-box;width:var(--knob);height:var(--knob);margin-top:-3px;border:0;border-radius:50%;background:#cb2d54;transition:box-shadow .15s}
+.screen-quality input:focus-visible{outline:none}.screen-quality input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px #f3e9f480}
+.screen-quality input.optimal::-webkit-slider-thumb{box-shadow:0 0 0 2px #5cf29a,0 0 7px #39ff8880}
+/* Longer server names (TigerVNC): a slightly wider button keeps the monitor as visible as with x11vnc. */
+.window-actions .screen-button:has(.long-server){width:68px}
+.screen-button .screen-symbol.long-server{margin-right:17px}.screen-button .screen-symbol.long-server .vnc-badge{right:-22px}
+/* Clipboard setting: one row, a switch per direction on the right. */
+.clipboard-switches{display:grid;gap:3px;justify-items:end;flex-shrink:0}
+.clipboard-switches label{display:flex;align-items:center;gap:9px;font-size:12px;line-height:1.2;color:var(--muted);white-space:nowrap;cursor:pointer}
+/* Four settings rows (with the clipboard switches) fit the fixed panel height without scrolling. */
+.view-settings .setting{padding:10px 0}.view-settings .setting:first-child{padding-top:2px}
+/* Project folder the Pi would refuse: a short hint right at the field. */
+.field-hint{font-size:11px;line-height:1.4;color:#f2a3b6}.field input[aria-invalid="true"]{border-color:#d5445e}
+/* Staged build: one compact line with the button beside it; the restart confirmation takes the full width. */
+.integrated-staged{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-top:7px;padding-top:7px}
+.integrated-staged>.update-install{padding-top:5px;padding-bottom:5px}
+.integrated-staged .integrated-confirm{flex-basis:100%}

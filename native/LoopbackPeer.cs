@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 
 namespace PiRelay;
@@ -12,8 +13,10 @@ public static class LoopbackPeer {
  [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)] private static extern bool QueryFullProcessImageName(IntPtr process,int flags,StringBuilder name,ref int size);
  [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] private static extern int GetLongPathName(string shortPath,StringBuilder longPath,int size);
- private const int AfInet=2,TcpTableOwnerPidConnections=4,RowSize=24;
- private const uint ProcessQueryLimitedInformation=0x1000,ErrorInsufficientBuffer=122;
+ [DllImport("advapi32.dll",SetLastError=true)] private static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+ [DllImport("advapi32.dll",SetLastError=true)] private static extern bool GetTokenInformation(IntPtr token,int infoClass,IntPtr info,int length,out int needed);
+ private const int AfInet=2,TcpTableOwnerPidConnections=4,RowSize=24,TokenUserClass=1;
+ private const uint ProcessQueryLimitedInformation=0x1000,ErrorInsufficientBuffer=122,TokenQuery=0x0008;
 
  // The process owning the client end of a connection from `client` to our listener on `serverPort`.
  public static int? OwnerProcessId(IPEndPoint client,int serverPort){
@@ -43,10 +46,27 @@ public static class LoopbackPeer {
   finally{CloseHandle(handle);}
  }
 
+ // The Windows account a process runs under; null when its token cannot be read (other accounts).
+ public static SecurityIdentifier? ProcessUser(int processId){
+  var handle=OpenProcess(ProcessQueryLimitedInformation,false,processId);if(handle==IntPtr.Zero)return null;
+  try{
+   if(!OpenProcessToken(handle,TokenQuery,out var token))return null;
+   try{
+    GetTokenInformation(token,TokenUserClass,IntPtr.Zero,0,out var size);if(size<=0)return null;
+    var buffer=Marshal.AllocHGlobal(size);
+    try{return GetTokenInformation(token,TokenUserClass,buffer,size,out _)?new SecurityIdentifier(Marshal.ReadIntPtr(buffer)):null;}
+    finally{Marshal.FreeHGlobal(buffer);}
+   }finally{CloseHandle(token);}
+  }finally{CloseHandle(handle);}
+ }
+
  // Short (8.3) and long spellings of the same path compare equal.
  private static string Normal(string path){var full=Path.GetFullPath(path);var buffer=new StringBuilder(1024);var length=GetLongPathName(full,buffer,buffer.Capacity);return length>0&&length<buffer.Capacity?buffer.ToString():full;}
+ // Same viewer program and the same Windows account: another account starting the same installed
+ // viewer against the port is refused as well.
  public static bool IsFrom(IPEndPoint client,int serverPort,string exe){
-  var path=OwnerProcessId(client,serverPort) is int id?ProcessPath(id):null;
-  return path!=null&&string.Equals(Normal(path),Normal(exe),StringComparison.OrdinalIgnoreCase);
+  if(OwnerProcessId(client,serverPort) is not int id||ProcessPath(id) is not {} path)return false;
+  using var me=WindowsIdentity.GetCurrent();
+  return string.Equals(Normal(path),Normal(exe),StringComparison.OrdinalIgnoreCase)&&ProcessUser(id) is {} user&&me.User is {} self&&user.Equals(self);
  }
 }

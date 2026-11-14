@@ -71,6 +71,7 @@ try{
   using var client=new System.Net.Sockets.TcpClient();await client.ConnectAsync(System.Net.IPAddress.Loopback,listenPort);using var accepted=await listener.AcceptTcpClientAsync();
   var peer=(System.Net.IPEndPoint)accepted.Client.RemoteEndPoint!;
   Check(LoopbackPeer.OwnerProcessId(peer,listenPort)==Environment.ProcessId,"The connecting process is identified");
+  Check(LoopbackPeer.ProcessUser(Environment.ProcessId)?.Equals(System.Security.Principal.WindowsIdentity.GetCurrent().User!)==true&&LoopbackPeer.ProcessUser(4)?.Equals(System.Security.Principal.WindowsIdentity.GetCurrent().User!)!=true,"The viewer's Windows account is read; the system process never counts as this user");
   Check(LoopbackPeer.IsFrom(peer,listenPort,Environment.ProcessPath!)&&!LoopbackPeer.IsFrom(peer,listenPort,Path.Combine(Environment.SystemDirectory,"notepad.exe")),"Only the expected viewer executable is accepted");
   {var shortName=new System.Text.StringBuilder(1024);if(GetShortPathName(Environment.ProcessPath!,shortName,shortName.Capacity)>0&&shortName.ToString()!=Environment.ProcessPath)Check(LoopbackPeer.IsFrom(peer,listenPort,shortName.ToString()),"Short 8.3 spelling of the viewer path is accepted too");}
   listener.Stop();}
@@ -104,15 +105,15 @@ try{
  await never.Check(["10.0.0.5"],_=>true);await never.Check(["10.0.0.5"],_=>true);Check(never.Snapshot()["10.0.0.5"]=="online","A live SSH session overrides failing ICMP");
  await never.Check([],_=>false);Check(never.Snapshot().Count==0,"Removed addresses disappear");
  // Pi address change: every alias on the old host moves, other hosts and comments stay, trusted keys move along.
- var config="Host MasterControl\r\n    HostName 192.168.1.50\r\n    User pi\r\n\r\nHost BackDoor\r\n    hostname=192.168.1.50\r\n\r\nHost Phone\r\n    HostName 192.168.1.142\r\n# HostName 192.168.1.50\r\n";
+ var config="Host MeinPi\r\n    HostName 192.168.1.50\r\n    User pi\r\n\r\nHost Ersatzzugang\r\n    hostname=192.168.1.50\r\n\r\nHost Phone\r\n    HostName 192.168.1.142\r\n# HostName 192.168.1.50\r\n";
  var (moved,count)=SshHostEdit.ReplaceHostName(config,"192.168.1.50","192.168.1.61");
  Check(count==2&&moved.Contains("    HostName 192.168.1.61\r\n")&&moved.Contains("hostname=192.168.1.61\r\n")&&moved.Contains("HostName 192.168.1.142")&&moved.Contains("# HostName 192.168.1.50"),"HostName moves for both aliases only: "+moved);
- var known="192.168.1.50 ssh-ed25519 AAAA1\n192.168.1.50 ssh-rsa AAAA2\n[192.168.1.142]:8022 ssh-ed25519 AAAA3\n";
+ var known="192.168.1.50 ssh-ed25519 AAAA1\n192.168.1.50 ssh-rsa AAAA2\n[192.168.1.77]:2222 ssh-ed25519 AAAA3\n";
  var (carried,added)=SshHostEdit.CarryKnownHosts(known,"192.168.1.50","192.168.1.61");
  Check(added==2&&carried.StartsWith(known)&&carried.EndsWith("192.168.1.61 ssh-ed25519 AAAA1\n192.168.1.61 ssh-rsa AAAA2\n"),"Trusted keys carried to the new address");
  Check(SshHostEdit.CarryKnownHosts(carried,"192.168.1.50","192.168.1.61").Added==0,"Existing entries for the new address are never overwritten");
  var back=SshHostEdit.CarryKnownHosts(carried,"192.168.1.61","192.168.1.50");
- Check(back.Added==0&&!back.Text.Contains("192.168.1.61")&&back.Text.Contains("192.168.1.50 ssh-ed25519 AAAA1")&&back.Text.Contains("[192.168.1.142]:8022"),"Moving back removes the carried copies only: "+back.Text);
+ Check(back.Added==0&&!back.Text.Contains("192.168.1.61")&&back.Text.Contains("192.168.1.50 ssh-ed25519 AAAA1")&&back.Text.Contains("[192.168.1.77]:2222"),"Moving back removes the carried copies only: "+back.Text);
  var foreign=SshHostEdit.CarryKnownHosts(known+"192.168.1.61 ssh-ed25519 OTHER\n","192.168.1.61","192.168.1.50");
  Check(foreign.Text.Contains("192.168.1.61 ssh-ed25519 OTHER"),"Keys that are not copies stay untouched");
  Check(SshHostEdit.ValidHost("192.168.1.61")&&SshHostEdit.ValidHost("raspberrypi.local")&&!SshHostEdit.ValidHost("1.2.3.4 -oProxyCommand=x")&&!SshHostEdit.ValidHost("")&&!SshHostEdit.ValidHost("-p"),"Only plain host names or addresses are accepted");

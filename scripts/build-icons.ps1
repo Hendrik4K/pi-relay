@@ -5,7 +5,7 @@ $taskRoot=Split-Path $PSScriptRoot -Parent
 $taskAssets=Join-Path $taskRoot 'native\Assets'
 New-Item -ItemType Directory -Path $taskAssets -Force | Out-Null
 if($ProfileIcon){
-    Copy-Item -LiteralPath $ProfileIcon -Destination (Join-Path $taskAssets 'MasterControl.ico') -Force
+    Copy-Item -LiteralPath $ProfileIcon -Destination (Join-Path $taskAssets 'MeinPi.ico') -Force
 }
 $taskSource=Join-Path $taskRoot 'public\assets\raspberry.png'
 $taskImage=[Drawing.Image]::FromFile($taskSource)
@@ -38,7 +38,7 @@ try {
     }
     foreach($taskFrame in $taskFrames){$taskWriter.Write([byte[]]$taskFrame.bytes)}
 }finally{$taskWriter.Dispose()}
-$taskProfile=Join-Path $taskAssets 'MasterControl.ico'
+$taskProfile=Join-Path $taskAssets 'MeinPi.ico'
 if(Test-Path -LiteralPath $taskProfile){
     $taskIcon=[Drawing.Icon]::new($taskProfile,64,64)
     $taskBitmap=$taskIcon.ToBitmap()

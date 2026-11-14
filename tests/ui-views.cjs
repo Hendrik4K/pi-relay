@@ -9,7 +9,7 @@ const {chromium}=load('playwright');
  const browser=await chromium.launch({headless:true,...(process.env.PI_RELAY_CHROME?{executablePath:process.env.PI_RELAY_CHROME}:{})});
  try{
   const page=await browser.newPage({viewport:{width:900,height:760}});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(/Content Security Policy/i.test(m.text()))errors.push(m.text());});
   const output=path.resolve(__dirname,'../qa');fs.mkdirSync(output,{recursive:true});
   await page.goto(process.env.PI_RELAY_QA_URL||'http://127.0.0.1:4173/?design=1&viewer-update=1');
   await page.getByRole('heading',{name:'Pi Relay',exact:true}).waitFor();
@@ -21,9 +21,9 @@ const {chromium}=load('playwright');
   const ip=await page.locator('.device-copy .ip').boundingBox();
   const deviceStatus=await page.locator('.device-copy .device-state').boundingBox();
   assert(deviceStatus.y>=ip.y+ip.height&&deviceStatus.x===ip.x,'Device status sits directly below the IP');
-  assert.equal(await page.getByRole('button',{name:'BackDoor ausklappen'}).getAttribute('aria-expanded'),'false');
+  assert.equal(await page.getByRole('button',{name:'Ersatzzugang ausklappen'}).getAttribute('aria-expanded'),'false');
   assert.equal((await page.locator('#backup-accesses').boundingBox()).height,0);
-  assert.equal(await page.locator('.sessions>.session').first().evaluate(e=>getComputedStyle(e).borderBottomWidth),'0px','No duplicate divider below MasterControl');
+  assert.equal(await page.locator('.sessions>.session').first().evaluate(e=>getComputedStyle(e).borderBottomWidth),'0px','No duplicate divider below MeinPi');
   assert.equal(await page.locator('.agents-strip').evaluate(e=>getComputedStyle(e).borderTopWidth),'1px');
   await page.waitForTimeout(300);
   const compactBox=await page.locator('.panel-viewport').boundingBox();
@@ -64,34 +64,34 @@ const {chromium}=load('playwright');
   // Header order: collapse arrow, Pi screen, settings rightmost (where subviews place their X).
   const [collapseX,screenX,gearX]=await Promise.all(['In den Infobereich minimieren','Pi-Bildschirm öffnen','Einstellungen'].map(name=>page.getByRole('button',{name,exact:true}).boundingBox().then(b=>b.x)));
   assert(collapseX<screenX&&screenX<gearX,'Header order arrow, screen, gear');
-  // The BackDoor toggle is a round node centred on the tree line, like the ball above it.
-  const toggle=await page.getByRole('button',{name:'BackDoor ausklappen'}).boundingBox(),ball=await page.locator('.session-line.first').boundingBox();
-  // The gutter of the first access is the BackDoor toggle: a + fades in on hover, the solid route stays visible.
+  // The Ersatzzugang toggle is a round node centred on the tree line, like the ball above it.
+  const toggle=await page.getByRole('button',{name:'Ersatzzugang ausklappen'}).boundingBox(),ball=await page.locator('.session-line.first').boundingBox();
+  // The gutter of the first access is the Ersatzzugang toggle: a + fades in on hover, the solid route stays visible.
   assert.equal(await page.locator('.backup-toggle svg').evaluate(e=>getComputedStyle(e).opacity),'0');
-  await page.getByRole('button',{name:'BackDoor ausklappen'}).hover();await page.waitForTimeout(450);
+  await page.getByRole('button',{name:'Ersatzzugang ausklappen'}).hover();await page.waitForTimeout(450);
   assert.equal(await page.locator('.backup-toggle svg').evaluate(e=>getComputedStyle(e).opacity),'1','Plus fades in over the route');
   assert.equal(await page.locator('.session-line.first').evaluate(e=>getComputedStyle(e).borderBottomStyle),'solid','Main route is a solid line');
   assert(await page.locator('.session-line.first').evaluate(e=>e.classList.contains('live')),'Connected access draws the red route');
   assert(Math.abs(toggle.x+toggle.width/2-ball.x)<=2,'Toggle sits on the tree line');
-  assert.equal(await page.getByRole('button',{name:'MasterControl Pi-Bildschirm öffnen'}).count(),1,'Quick screen button beside the terminal');
-  const quick=await page.getByRole('button',{name:'MasterControl Pi-Bildschirm öffnen'}).boundingBox(),term=await page.getByRole('button',{name:'MasterControl Terminal öffnen'}).boundingBox();
+  assert.equal(await page.getByRole('button',{name:'MeinPi Pi-Bildschirm öffnen'}).count(),1,'Quick screen button beside the terminal');
+  const quick=await page.getByRole('button',{name:'MeinPi Pi-Bildschirm öffnen'}).boundingBox(),term=await page.getByRole('button',{name:'MeinPi Terminal öffnen'}).boundingBox();
   assert(quick.x+quick.width<=term.x,'Quick screen button sits left of the terminal button');
-  await page.getByRole('button',{name:'BackDoor ausklappen'}).click();
-  assert.equal(await page.getByRole('button',{name:'BackDoor einklappen'}).getAttribute('aria-expanded'),'true','Arrow flips when expanded');
+  await page.getByRole('button',{name:'Ersatzzugang ausklappen'}).click();
+  assert.equal(await page.getByRole('button',{name:'Ersatzzugang einklappen'}).getAttribute('aria-expanded'),'true','Arrow flips when expanded');
   await page.waitForTimeout(700);
-  // The route bends into the access name (not the status line); expanding shows the BackDoor branch.
+  // The route bends into the access name (not the status line); expanding shows the Ersatzzugang branch.
   const name=await page.locator('.sessions>.session').first().locator('.session-copy strong').boundingBox(),route=await page.locator('.session-line.first').boundingBox();
   // The horizontal stroke meets the name at half the height of its lowercase letters.
   const xMid=await page.locator('.sessions>.session').first().locator('.session-copy strong').evaluate(e=>{const probe=document.createElement('span');probe.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';e.appendChild(probe);const base=probe.getBoundingClientRect().top;probe.remove();const cs=getComputedStyle(e),c=document.createElement('canvas').getContext('2d');c.font=cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;return base-c.measureText('a').actualBoundingBoxAscent/2;});
   const stroke=await page.locator('.session-line.first').evaluate(e=>e.getBoundingClientRect().bottom-parseFloat(getComputedStyle(e).borderBottomWidth)/2);
   assert(Math.abs(stroke-xMid)<=1.5,'Route ends at half the lowercase height of the access name: '+stroke+' vs '+xMid);
-  assert.equal(await page.locator('.backup-session .backup-route').evaluate(e=>e.classList.contains('live')),false,'Unconnected BackDoor route is grey');
+  assert.equal(await page.locator('.backup-session .backup-route').evaluate(e=>e.classList.contains('live')),false,'Unconnected Ersatzzugang route is grey');
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('.backup-route-stub')).opacity==='1',null,{timeout:2000});
   await page.waitForTimeout(280);
   const expandedBox=await page.locator('.panel-viewport').boundingBox();
   assert(expandedBox.height>compactBox.height+45,'Backup increases the shared panel height');
   assert(Math.abs(expandedBox.y+expandedBox.height-compactBox.y-compactBox.height)<1,'Bottom stays anchored while expanding upward');
-  for(const alias of ['MasterControl','BackDoor']){
+  for(const alias of ['MeinPi','Ersatzzugang']){
    const button=page.getByRole('button',{name:alias+' Terminal öffnen'});
    assert.equal(await button.locator('.terminal-face-front svg').count(),1);
    assert.equal(await button.locator('.terminal-face-front svg').getAttribute('width'),'29');
@@ -112,7 +112,7 @@ const {chromium}=load('playwright');
    assert.equal(await shell.locator('.terminal-glitter').count(),0,'No sparkle effect');
   }
   assert(await page.locator('.view-home').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'Expanded overview fits without agent scrolling');
-  await page.getByRole('button',{name:'BackDoor einklappen'}).click();
+  await page.getByRole('button',{name:'Ersatzzugang einklappen'}).click();
   await page.getByRole('button',{name:'Verbindungshilfe anzeigen'}).hover();
   assert((await page.locator('#connection-help').innerText()).includes('Klick verbindet · Bildschirm · Terminal'));
   await page.locator('.brand h1').hover();
@@ -150,6 +150,11 @@ const {chromium}=load('playwright');
   await page.getByRole('heading',{name:'Einstellungen',exact:true}).waitFor();
   assert.equal(await page.locator('footer').getByRole('button',{name:'Verlauf anzeigen'}).count(),1);
   assert.equal(await page.locator('footer').getByRole('button',{name:'Pi Relay beenden'}).count(),1);
+  // Clipboard: one switch per direction, both on by default.
+  for(const name of ['Text vom Pi übernehmen','Windows-Text an den Pi geben'])assert(await page.getByLabel(name).isChecked(),name+' is on by default');
+  await page.getByLabel('Text vom Pi übernehmen').uncheck();assert(!await page.getByLabel('Text vom Pi übernehmen').isChecked());
+  await page.getByLabel('Text vom Pi übernehmen').check();
+  assert(await page.locator('.view-settings').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'Settings fit without scrolling');
   await save('settings');
   await page.getByRole('button',{name:'Verlauf anzeigen'}).click();
   await page.getByRole('heading',{name:'Verlauf',exact:true}).waitFor();
@@ -225,6 +230,27 @@ const {chromium}=load('playwright');
   assert((await sleepPage.locator('.agent.codex .avatar').evaluate(e=>getComputedStyle(e).filter)).includes('grayscale(1)'),'Sleeping companion is grey');
   assert.equal(await sleepPage.locator('.session-line.first').evaluate(e=>getComputedStyle(e).borderBottomStyle),'dashed','Disconnected route is dashed');
   await sleepPage.close();
-  console.log('PASS: compact overview, stacked device status, waiting for a restarting Pi (cancel), sleeping companions and dashed route while disconnected, backup drawer/key icon, transient help, agent buttons, views, keyboard return, collapse direction, 360px layout and reduced motion.');
+  // Agent folder: the home folder with write rights is refused right at the field, a subfolder is fine.
+  const agentPage=await browser.newPage({viewport:{width:900,height:760}});
+  await agentPage.goto((process.env.PI_RELAY_QA_URL||'http://127.0.0.1:4173/').split('?')[0]+'?design=1');
+  await agentPage.getByRole('button',{name:'Claude-Zugang verwalten'}).click();
+  await agentPage.getByLabel('SSH-Zugang').selectOption('MeinPi');
+  const folder=agentPage.getByLabel('Projektordner auf dem Pi'),grant=agentPage.getByRole('button',{name:/freigeben/});
+  await folder.fill('/home/pi');assert.equal(await agentPage.locator('.field-hint').count(),0,'Home folder read-only is allowed');
+  await agentPage.getByText('Dateien ändern erlauben').click();
+  await agentPage.locator('.field-hint').waitFor();assert(await grant.isDisabled(),'Home folder with write rights cannot be saved');
+  await folder.fill('/');assert((await agentPage.locator('.field-hint').innerText()).includes('„/“'));
+  await folder.fill('/home/pi/Desktop/Claude');
+  assert.equal(await agentPage.locator('.field-hint').count(),0);assert(await grant.isEnabled(),'A subfolder can be saved');
+  await agentPage.close();
+  // A longer server name (TigerVNC) widens the button a little; the badge stays inside it.
+  const tigerPage=await browser.newPage({viewport:{width:900,height:760}});
+  await tigerPage.goto((process.env.PI_RELAY_QA_URL||'http://127.0.0.1:4173/').split('?')[0]+'?design=1&vnc-tiger=1');
+  await tigerPage.getByRole('heading',{name:'Pi Relay',exact:true}).waitFor();
+  {const button=await tigerPage.locator('.screen-button').boundingBox(),tag=await tigerPage.locator('.screen-button .vnc-badge').boundingBox();
+   assert.equal(await tigerPage.locator('.screen-button .vnc-badge').innerText(),'TigerVNC');
+   assert(tag.x>=button.x&&tag.x+tag.width<=button.x+button.width,'TigerVNC badge stays inside its button');}
+  await tigerPage.close();
+  console.log('PASS: compact overview, refused agent folders flagged at the field, TigerVNC badge inside its button, stacked device status, waiting for a restarting Pi (cancel), sleeping companions and dashed route while disconnected, backup drawer/key icon, transient help, agent buttons, views, keyboard return, collapse direction, 360px layout and reduced motion.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

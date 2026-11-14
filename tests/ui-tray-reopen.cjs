@@ -13,7 +13,7 @@ const {chromium}=load('playwright');
    const events=new EventTarget();
    window.__relayMessages=[];
    window.__relaySend=data=>events.dispatchEvent(new MessageEvent('message',{data:structuredClone(data)}));
-   window.__relayState={profiles:[{alias:'MasterControl',hostname:'pi.local',state:'disconnected'},{alias:'BackDoor',hostname:'pi.local',state:'disconnected'}],keys:[],settings:{motion:true,minimized:true,autostart:false,managedViewer:true},panel:{visible:true,collapsing:false},agents:{codex:{alias:'',root:'',state:'disconnected'},claude:{alias:'',root:'',state:'disconnected'}},events:[]};
+   window.__relayState={profiles:[{alias:'MeinPi',hostname:'pi.local',state:'disconnected'},{alias:'Ersatzzugang',hostname:'pi.local',state:'disconnected'}],keys:[],settings:{motion:true,minimized:true,autostart:false,managedViewer:true},panel:{visible:true,collapsing:false},agents:{codex:{alias:'',root:'',state:'disconnected'},claude:{alias:'',root:'',state:'disconnected'}},events:[]};
    window.chrome=window.chrome||{};
    window.chrome.webview={
     addEventListener:(...args)=>events.addEventListener(...args),
@@ -44,7 +44,7 @@ const {chromium}=load('playwright');
   assert.equal(await status.locator('.state-hover').evaluate(e=>getComputedStyle(e).opacity),'1','Verbinden fades in');
   assert.equal(await status.locator('.state-rest').evaluate(e=>getComputedStyle(e).opacity),'0');
   await status.click();
-  assert(await page.evaluate(()=>window.__relayMessages.some(m=>m.action==='connectProfile'&&m.alias==='MasterControl')),'Status click connects the selected access');
+  assert(await page.evaluate(()=>window.__relayMessages.some(m=>m.action==='connectProfile'&&m.alias==='MeinPi')),'Status click connects the selected access');
   await page.mouse.move(5,5);await page.waitForTimeout(450);
   assert.equal(await status.locator('.state-rest').evaluate(e=>getComputedStyle(e).opacity),'1','Getrennt fades back');
   await page.waitForFunction(()=>{const surface=window.__relayMessages.filter(m=>m.action==='surfaceReady').at(-1);return innerHeight===window.__relayTargetHeight&&surface?.height===innerHeight;});
@@ -96,9 +96,9 @@ const {chromium}=load('playwright');
   const up=await clips(24),height=(await page.locator('.relay').boundingBox()).height;
   assert(up[0]>height*0.85&&up.at(-1)===0&&up.length>4,'Slides in from below: '+JSON.stringify(up.map(Math.round)));
   assert.equal(await page.locator('.relay').evaluate(e=>e.style.transform),'');
-  await page.getByRole('button',{name:'BackDoor ausklappen'}).click();
+  await page.getByRole('button',{name:'Ersatzzugang ausklappen'}).click();
   await page.waitForTimeout(320);
-  const expandedHeight=await page.evaluate(()=>innerHeight);assert(expandedHeight>=box.height+45,"BackDoor row adds its height");
+  const expandedHeight=await page.evaluate(()=>innerHeight);assert(expandedHeight>=box.height+45,"Ersatzzugang row adds its height");
   await page.evaluate(()=>{window.__relayState.keys=Array.from({length:30},(_,i)=>({name:'Beispiel '+i,type:'ed25519',fingerprint:'SHA256:example'+i,path:'fixture-'+i+'.pub'}));window.__relaySend({type:'state',data:window.__relayState});});
   await page.getByRole('button',{name:'Schlüssel verwalten',exact:true}).click();
   assert.equal(await page.evaluate(()=>innerHeight),expandedHeight,'Keys preserve the expanded main-menu height');
@@ -210,8 +210,8 @@ const {chromium}=load('playwright');
   assert.equal(await page.evaluate(()=>window.__relayMessages.filter(m=>['connect','connectScreen','installViewer','importRealVnc'].includes(m.action)).length),0,'Tests never start connections or downloads; the portal request is mocked');
   // Quick screen button in an access row opens that alias's screen (and only on click).
   await page.getByRole('button',{name:'Pi-Bildschirm schließen'}).click();
-  await page.getByRole('button',{name:'MasterControl Pi-Bildschirm öffnen'}).click();
-  assert.deepEqual(await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='connectScreen').map(m=>m.alias)),['MasterControl']);
+  await page.getByRole('button',{name:'MeinPi Pi-Bildschirm öffnen'}).click();
+  assert.deepEqual(await page.evaluate(()=>window.__relayMessages.filter(m=>m.action==='connectScreen').map(m=>m.alias)),['MeinPi']);
   console.log('PASS: integrated viewer version/update/build/activation with SSH confirmation, dynamic tray layout/reveal, key scrolling, green update offer, manual Classic download guidance, skip/restore bridge, current status, one-click setup and advanced EXE picker. No connections or downloads started.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

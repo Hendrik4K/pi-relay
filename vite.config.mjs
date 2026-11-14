@@ -11,6 +11,24 @@ const integratedViewer = {
   },
 };
 
+// Strict content policy for the built app; the dev server injects inline scripts, so build only.
+// User pictures come from their own virtual host. frame-ancestors only works as a header, and the
+// WebView2 hosts block navigation and new windows anyway.
+const contentPolicy = {
+  name: "pi-relay-content-policy",
+  apply: "build",
+  transformIndexHtml() {
+    return [{
+      tag: "meta",
+      attrs: {
+        "http-equiv": "Content-Security-Policy",
+        content: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://pi-relay-icons.local; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'",
+      },
+      injectTo: "head-prepend",
+    }];
+  },
+};
+
 export default defineConfig({
   build: {
     outDir: "dist/client",
@@ -30,5 +48,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [react(), integratedViewer],
+  plugins: [react(), integratedViewer, contentPolicy],
 });

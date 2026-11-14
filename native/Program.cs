@@ -93,7 +93,7 @@ public sealed class RelayWindow : Window {
   // User pictures (Pi case, companions) live outside the app folder so updates keep them.
   Directory.CreateDirectory(icons.Folder);web.CoreWebView2.SetVirtualHostNameToFolderMapping("pi-relay-icons.local",icons.Folder,CoreWebView2HostResourceAccessKind.DenyCors);
   web.CoreWebView2.NavigationStarting+=(_,e)=>{if(!e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))e.Cancel=true;};
-  web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;
+  web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;web.CoreWebView2.DownloadStarting+=(_,e)=>e.Cancel=true;
   web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{await Handle(e.WebMessageAsJson);}catch(Exception ex){Notice(ex.Message);Log("Aktion fehlgeschlagen: "+ex.Message);}};
   web.NavigationCompleted+=(_,e)=>{ready=e.IsSuccess;if(ready){Push();if(IsVisible&&Opacity>0)RevealSurface();}WriteStatus();};web.Source=new Uri("https://pi-relay.local/index.html");
   await Refresh();if(saved.Settings.Minimized&&!revealRequested)CompleteHide();else ShowPanel();WriteStatus();
@@ -186,7 +186,7 @@ public sealed class RelayWindow : Window {
   // Activation restarts Pi Relay; active SSH sessions end only after the user confirmed exactly that.
   case "activateIntegratedViewer":if(connections.Values.Any(c=>c.IsReady)&&!(r.TryGetProperty("confirm",out var confirmed)&&confirmed.GetBoolean()))throw new InvalidOperationException("SSH-Verbindungen sind aktiv. Bitte den Neustart ausdrücklich bestätigen.");integratedViewer.StartActivation(Environment.ProcessId);Log("Neue Pi-Relay-Version wird aktiviert; Pi Relay startet neu");Quit();break;
   case "connectScreenExternal":await OpenExternalScreen(r.GetProperty("alias").GetString()??"");break;
-  case "saveSettings":var settings=r.GetProperty("settings");if(settings.TryGetProperty("minimized",out var min))saved.Settings.Minimized=min.GetBoolean();if(settings.TryGetProperty("motion",out var motion))saved.Settings.Motion=motion.GetBoolean();if(settings.TryGetProperty("externalViewer",out var external)){saved.Settings.ExternalViewer=external.GetBoolean();Log(external.GetBoolean()?"Pi-Bildschirm öffnet jetzt den externen Viewer":"Pi-Bildschirm öffnet jetzt den integrierten Viewer");}if(settings.TryGetProperty("autostart",out var start)){using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");if(start.GetBoolean())key.SetValue("PiRelay","\""+Environment.ProcessPath+"\"");else key.DeleteValue("PiRelay",false);saved.Settings.Autostart=start.GetBoolean();}Save();Push();break;
+  case "saveSettings":var settings=r.GetProperty("settings");if(settings.TryGetProperty("minimized",out var min))saved.Settings.Minimized=min.GetBoolean();if(settings.TryGetProperty("motion",out var motion))saved.Settings.Motion=motion.GetBoolean();if(settings.TryGetProperty("clipboardFromPi",out var fromPi))saved.Settings.ClipboardFromPi=fromPi.GetBoolean();if(settings.TryGetProperty("clipboardToPi",out var toPi))saved.Settings.ClipboardToPi=toPi.GetBoolean();if(settings.TryGetProperty("externalViewer",out var external)){saved.Settings.ExternalViewer=external.GetBoolean();Log(external.GetBoolean()?"Pi-Bildschirm öffnet jetzt den externen Viewer":"Pi-Bildschirm öffnet jetzt den integrierten Viewer");}if(settings.TryGetProperty("autostart",out var start)){using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");if(start.GetBoolean())key.SetValue("PiRelay","\""+Environment.ProcessPath+"\"");else key.DeleteValue("PiRelay",false);saved.Settings.Autostart=start.GetBoolean();}Save();Push();break;
   // Changing the Pi address rewrites HostName for all aliases on that host and carries its trusted keys.
   case "setHost":{var from=r.GetProperty("from").GetString()??"";var to=(r.GetProperty("to").GetString()??"").Trim();
    if(!profiles.Any(p=>p.Hostname==from))throw new InvalidOperationException("Unbekannte Pi-Adresse");
@@ -255,7 +255,7 @@ public sealed class RelayWindow : Window {
  // start the alias's SSH login; a second click focuses the existing window of that alias.
  private void OpenScreen(string alias){
   if(!profiles.Any(p=>p.Alias==alias))throw new InvalidOperationException("Bekannten SSH-Zugang wählen");
-  var screen=screens.GetOrCreate(alias,()=>new ScreenWindow(alias,()=>EnsureConnection(alias)),out var created);
+  var screen=screens.GetOrCreate(alias,()=>new ScreenWindow(alias,()=>EnsureConnection(alias),()=>saved.Settings),out var created);
   if(created){screen.Finished+=()=>{screens.Release(alias,screen);Log(alias+": Pi-Bildschirm geschlossen · SSH bleibt verbunden");};Log(alias+": Pi-Bildschirm im integrierten Viewer geöffnet");}
   screen.Reveal();
  }

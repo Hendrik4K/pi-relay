@@ -21,10 +21,11 @@ public static class Program {
   var server=new TcpListener(IPAddress.Loopback,0);server.Start();var port=((IPEndPoint)server.LocalEndpoint).Port;
   _=Task.Run(async()=>{while(true){TcpClient c;try{c=await server.AcceptTcpClientAsync();}catch{return;}Interlocked.Increment(ref accepted);_=Task.Run(()=>Serve(c));}});
   var project=Path.GetFullPath(".");
-  var session=new SharedSession("MasterControl",()=>{},_=>{Interlocked.Increment(ref launches);var s=Discovery.StartInfo(python,"-u",Path.Combine(project,"tests/screen-bridge/vnc_port_shim.py"),port.ToString(),Path.Combine(project,"native/remote_worker.py"));s.RedirectStandardInput=true;return s;});
+  var session=new SharedSession("MeinPi",()=>{},_=>{Interlocked.Increment(ref launches);var s=Discovery.StartInfo(python,"-u",Path.Combine(project,"tests/screen-bridge/vnc_port_shim.py"),port.ToString(),Path.Combine(project,"native/remote_worker.py"));s.RedirectStandardInput=true;return s;});
   async Task<SharedSession> Ensure(){if(!session.IsReady)await session.Connect();return session;}
-  ScreenWindow Open(){var w=new ScreenWindow("MasterControl",Ensure){WindowStartupLocation=WindowStartupLocation.Manual,Left=-20000,Top=-20000,ShowInTaskbar=false,ShowActivated=false};w.Show();return w;}
+  ScreenWindow Open(){var w=new ScreenWindow("MeinPi",Ensure){WindowStartupLocation=WindowStartupLocation.Manual,Left=-20000,Top=-20000,ShowInTaskbar=false,ShowActivated=false};w.Show();return w;}
   try{
+   Require(ScreenWindow.PlainText("a\u0007b\tc\r\nd\u001b[31m\u0085e")=="ab\tc\r\nd[31me","Pi text loses control characters, keeps tabs and line breaks");
    var first=Open();
    try{await Until(()=>frames>0&&incremental>0,"noVNC in WebView2 receives the frame and asks for the next update",45000);}
    catch{var web=(Microsoft.Web.WebView2.Wpf.WebView2)typeof(ScreenWindow).GetField("web",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!.GetValue(first)!;

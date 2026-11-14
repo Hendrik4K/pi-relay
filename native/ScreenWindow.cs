@@ -14,6 +14,8 @@ public sealed class ScreenWindow : Window {
  private readonly WebView2 web=new();
  private readonly ScreenBridge bridge;
  private readonly MicRelay mic;
+ private readonly Func<UiSettings> settings;
+ private DateTime deactivated=DateTime.MinValue;
  private bool ready,finished,initialized,fullscreen,sizing;
  private readonly System.Windows.Threading.DispatcherTimer fitTimer=new(){Interval=TimeSpan.FromMilliseconds(15)};
  private readonly System.Diagnostics.Stopwatch fitClock=new();
@@ -22,14 +24,15 @@ public sealed class ScreenWindow : Window {
  public event Action? Finished;
  internal static string DataFolder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PiRelay","WebView");
  public string Alias=>bridge.Alias;
- public ScreenWindow(string alias,Func<Task<SharedSession>> ensure){
-  bridge=new(alias,ensure,Post);
+ public ScreenWindow(string alias,Func<Task<SharedSession>> ensure,Func<UiSettings>? settings=null){
+  this.settings=settings??(()=>new UiSettings());
+  bridge=new(alias,ensure,Post,PostData);
   mic=new(ensure,Post);
   Title=alias+" · Pi-Bildschirm · Pi Relay";var area=SystemParameters.WorkArea;Width=Math.Min(1280,area.Width*.9);Height=Math.Min(840,area.Height*.9);MinWidth=480;MinHeight=320;WindowStartupLocation=WindowStartupLocation.CenterScreen;
   Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,21,26));Content=web;
   var icon=Path.Combine(AppContext.BaseDirectory,"PiRelay.ico");if(File.Exists(icon))Icon=BitmapFrame.Create(new Uri(icon));
   // noVNC releases pressed keys on blur; the explicit message also covers Alt+Tab while a key is held.
-  Activated+=(_,_)=>Post(new{type="screenActivated"});Deactivated+=(_,_)=>Post(new{type="screenDeactivated"});
+  Activated+=(_,_)=>Post(new{type="screenActivated"});Deactivated+=(_,_)=>{deactivated=DateTime.UtcNow;Post(new{type="screenDeactivated"});};
   Closed+=(_,_)=>Finish();
   // After a resize drag ends, the renderer measures the black bars and asks to shrink to the desktop's aspect ratio.
   SourceInitialized+=(_,_)=>HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(SizeMoveHook);
@@ -38,6 +41,20 @@ public sealed class ScreenWindow : Window {
  }
  public void Reveal(){Show();if(WindowState==WindowState.Minimized)WindowState=fullscreen?WindowState.Maximized:WindowState.Normal;Activate();}
  private void Post(object message){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Post(message)));return;}if(ready&&!finished)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(message));}
+ // Screen bytes reach the renderer as shared memory: no base64, no JSON. The page copies them and
+ // releases the buffer; closing our side right after posting does not affect the page's copy.
+ private bool sharedBuffers=true;
+ private void PostData(byte[] chunk){
+  if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>PostData(chunk)));return;}
+  if(!ready||finished)return;
+  if(sharedBuffers)try{
+   using var shared=web.CoreWebView2.Environment.CreateSharedBuffer((ulong)chunk.Length);
+   System.Runtime.InteropServices.Marshal.Copy(chunk,0,shared.Buffer,chunk.Length);
+   web.CoreWebView2.PostSharedBufferToScript(shared,CoreWebView2SharedBufferAccess.ReadOnly,"{\"type\":\"screenData\"}");
+   return;
+  }catch(Exception e) when(e is NotImplementedException or NotSupportedException or System.Runtime.InteropServices.COMException or InvalidCastException){sharedBuffers=false;}
+  Post(new{type="screenData",data=Convert.ToBase64String(chunk)});
+ }
  private async Task Initialize(){try{
   var environment=await CoreWebView2Environment.CreateAsync(null,DataFolder);
   await web.EnsureCoreWebView2Async(environment);if(finished)return;web.DefaultBackgroundColor=Color.FromArgb(255,23,21,26);
@@ -46,7 +63,7 @@ public sealed class ScreenWindow : Window {
   // F5, Ctrl+F, Ctrl+P and similar belong to the Pi desktop, not to WebView2.
   settings.AreBrowserAcceleratorKeysEnabled=false;
   web.CoreWebView2.NavigationStarting+=(_,e)=>{if(!e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))e.Cancel=true;};
-  web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;
+  web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;web.CoreWebView2.DownloadStarting+=(_,e)=>e.Cancel=true;
   // Only the bundled viewer page may use the microphone (for the "Mikro" switch); nothing else.
   web.CoreWebView2.PermissionRequested+=(_,e)=>e.State=e.PermissionKind==CoreWebView2PermissionKind.Microphone&&e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase)?CoreWebView2PermissionState.Allow:CoreWebView2PermissionState.Deny;
   web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{await Handle(e.WebMessageAsJson);}catch(Exception ex){Post(new{type="screenNotice",message=ex.Message});}};
@@ -56,7 +73,7 @@ public sealed class ScreenWindow : Window {
  private async Task Handle(string json){using var document=JsonDocument.Parse(json);var r=document.RootElement;switch(r.GetProperty("action").GetString()){
   // A renderer reload restarts the RFB handshake on a fresh tunnel, but only the first load connects by itself.
   case "screenReady":ready=true;var first=!initialized;initialized=true;if(!first)bridge.Close("Ansicht neu geladen. Erneut verbinden.");Post(new{type="screenInit",alias=Alias,version=typeof(ScreenWindow).Assembly.GetName().Version?.ToString(3),autoConnect=first,fullscreen});break;
-  case "screenOpen":await bridge.Open();break;
+  case "screenOpen":await bridge.Open(r.TryGetProperty("auto",out var auto)&&auto.GetBoolean());break;
   case "screenSend":var data=Convert.FromBase64String(r.GetProperty("data").GetString()??"");if(data.Length>65536)throw new IOException("Datenblock zu groß");bridge.Send(data);break;
   case "screenDisconnect":bridge.Close();break;
   case "micStart":try{await mic.Start();}catch(Exception e){Post(new{type="micState",state="error",message=e.Message});}break;
@@ -72,9 +89,17 @@ public sealed class ScreenWindow : Window {
    break;}
   case "screenUploadCancel":try{await bridge.Inbox("inbox_cancel",new{token=r.GetProperty("token").GetString()});}catch{}break;
   case "screenFit":FitTo(r.GetProperty("dw").GetDouble(),r.GetProperty("dh").GetDouble());break;
-  case "screenClipboardWrite":var text=r.GetProperty("text").GetString()??"";if(text.Length>1048576)throw new IOException("Zwischenablage zu groß");SetClipboard(text);break;
-  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual";Post(new{type="screenClipboardText",text=why=="manual"||!PrivateClipboard()?ReadClipboard():"",reason=why});break;}
+  // Pi → Windows only while this window is in front (a one-second grace covers copying and then
+  // switching away), only text and without control characters: a program on the Pi cannot quietly
+  // swap what is pasted elsewhere on Windows.
+  case "screenClipboardWrite":{var text=r.GetProperty("text").GetString()??"";if(text.Length>1048576)throw new IOException("Zwischenablage zu groß");
+   if(!settings().ClipboardFromPi||!(IsActive||DateTime.UtcNow-deactivated<TimeSpan.FromSeconds(1)))break;
+   SetClipboard(PlainText(text));Post(new{type="screenNotice",message="Text vom Pi in die Windows-Zwischenablage übernommen."});break;}
+  // Windows → Pi: automatically only when enabled and never content a password manager marked private;
+  // "An Pi" stays an explicit choice.
+  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual";Post(new{type="screenClipboardText",text=why=="manual"||settings().ClipboardToPi&&!PrivateClipboard()?ReadClipboard():"",reason=why});break;}
  }}
+ internal static string PlainText(string text)=>string.Concat(text.Where(c=>!char.IsControl(c)||c is '\t' or '\n' or '\r'));
  private static void SetClipboard(string text){for(var attempt=0;;attempt++){try{System.Windows.Clipboard.SetText(text);return;}catch(System.Runtime.InteropServices.COMException)when(attempt<3){Thread.Sleep(40);}}}
  // Password managers flag copied secrets (KeePass, Bitwarden, 1Password, Windows clipboard history).
  // Such content reaches the Pi only through an explicit "An Pi", never through the automatic sync.

@@ -8,24 +8,29 @@ namespace PiRelay;
 public sealed class ScreenBridge : IDisposable {
  private readonly Func<Task<SharedSession>> ensure;
  private readonly Action<object> post;
+ private readonly Action<byte[]>? data;
  private readonly object gate=new();
  private TcpTunnel? tunnel;
  private Channel<byte[]>? outgoing;
+ private SharedSession? last;
  private int generation;
  private bool opening,disposed;
  private CancellationTokenSource? waiting;
  public string Alias {get;}
  public string State {get;private set;}="idle";
- public ScreenBridge(string alias,Func<Task<SharedSession>> ensure,Action<object> post){Alias=alias;this.ensure=ensure;this.post=post;}
+ // `data` takes the raw screen bytes (the window passes them on as shared memory); without it they go out as base64 messages.
+ public ScreenBridge(string alias,Func<Task<SharedSession>> ensure,Action<object> post,Action<byte[]>? data=null){Alias=alias;this.ensure=ensure;this.post=post;this.data=data;}
 
- // Explicit user action only. A failed attempt is reported, never retried automatically; only a
- // VNC server that is not listening yet is awaited for a while on the existing SSH transport.
- public async Task Open(){
+ // An explicit user action, or (`auto`) the viewer reopening after the Pi ended the picture: that
+ // only reuses a live SSH transport and never starts a login. A VNC server that is not listening
+ // yet is awaited for a while on the existing transport.
+ public async Task Open(bool auto=false){
   int current;CancellationTokenSource cancel;
   lock(gate){if(disposed||opening||State=="open")return;opening=true;current=++generation;State="connecting";waiting?.Cancel();waiting=cancel=new();}
   post(new{type="screenState",state="connecting"});
   try{
-   var session=await ensure();
+   var session=auto?(last is {IsReady:true} alive?alive:throw new InvalidOperationException("SSH-Verbindung zum Pi beendet. „Neu verbinden“ meldet den Zugang bei Bedarf neu an.")):await ensure();
+   last=session;
    var opened=await session.OpenTunnelWaiting(seconds=>{if(Volatile.Read(ref generation)==current)post(new{type="screenState",state="waiting",seconds});},cancel.Token);
    var queue=Channel.CreateBounded<byte[]>(new BoundedChannelOptions(1024){SingleReader=true,SingleWriter=true});
    lock(gate){if(current!=generation||disposed){_=opened.DisposeAsync().AsTask();return;}tunnel=opened;outgoing=queue;State="open";}
@@ -50,10 +55,10 @@ public sealed class ScreenBridge : IDisposable {
 
  private async Task Pump(TcpTunnel source,int current){
   string? failure=null;
-  try{await foreach(var chunk in source.Incoming.ReadAllAsync()){if(Volatile.Read(ref generation)!=current)return;post(new{type="screenData",data=Convert.ToBase64String(chunk)});}}
+  try{await foreach(var chunk in source.Incoming.ReadAllAsync()){if(Volatile.Read(ref generation)!=current)return;if(data!=null)data(chunk);else post(new{type="screenData",data=Convert.ToBase64String(chunk)});}}
   catch(Exception e){failure=e.Message;}
   if(failure==null&&!source.TransportReady)failure="SSH-Verbindung zum Pi beendet. „Neu verbinden“ meldet den Zugang bei Bedarf neu an.";
-  Finish(current,failure??"Der Pi hat die Bildschirmverbindung beendet.",failure!=null);
+  Finish(current,failure??"Der Pi hat die Bildschirmverbindung beendet.",failure!=null,source.TransportReady);
  }
 
  private async Task Drain(TcpTunnel target,Channel<byte[]> queue,int current){
@@ -64,15 +69,16 @@ public sealed class ScreenBridge : IDisposable {
     while(batch.Length<32768&&queue.Reader.TryRead(out var part))batch.Write(part);
     await target.Send(batch.ToArray());
    }
-  }catch(Exception e){Finish(current,"Senden fehlgeschlagen: "+e.Message,true);}
+  }catch(Exception e){Finish(current,"Senden fehlgeschlagen: "+e.Message,true,target.TransportReady);}
  }
 
- private void Finish(int current,string message,bool error){
+ // `retry`: the stream ended while SSH still stands, so the viewer may reopen it by itself.
+ private void Finish(int current,string message,bool error,bool retry=false){
   TcpTunnel? closing;Channel<byte[]>? queue;
   lock(gate){if(current!=generation||State is "idle" or "closed" or "error")return;generation++;closing=tunnel;queue=outgoing;tunnel=null;outgoing=null;State=error?"error":"closed";waiting?.Cancel();}
   queue?.Writer.TryComplete();
   if(closing!=null)_=closing.DisposeAsync().AsTask();
-  if(!disposed)post(new{type="screenClosed",error,message});
+  if(!disposed)post(new{type="screenClosed",error,message,retry});
  }
 
  public void Dispose(){

@@ -3,7 +3,7 @@
 **Windows-Tray-App für den Raspberry Pi: Terminal, Pi-Bildschirm (VNC) und KI-Agenten über eine einzige SSH-Verbindung.**
 *A Windows tray app for your Raspberry Pi: terminal, Pi desktop (VNC) and AI agents over a single SSH connection. English below.*
 
-<p align="center"><img src="docs/screenshots/pi-bildschirm.png" width="420" alt="Pi Relay Übersicht"></p>
+<p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
 ## Was es kann
 
@@ -14,7 +14,8 @@
 - **Windows-Mikrofon im Pi:** Schalter „Mikro“ im Bildschirmfenster schickt dein Windows-Mikrofon (48 kHz, mono) über dieselbe SSH-Verbindung an ein Empfängerprogramm auf dem Pi (`~/.local/bin/windows-mikro-empfang`, z. B. eine PipeWire-Quelle). VNC selbst überträgt kein Audio.
 - **Kleinigkeiten:** Ping-Erreichbarkeit (rein ICMP, ohne Anmeldung), Pi-Adresse direkt ändern (passt `~/.ssh/config` und `known_hosts` mit Sicherung an), Board-Infos (Modell, RAM, Speicher), eigene Bilder über „Icon ändern“, Update-Prüfung für den integrierten Viewer.
 
-<p align="center"><img src="docs/screenshots/terminal.png" width="300" alt="Terminal"> <img src="docs/screenshots/einstellungen.png" width="300" alt="Einstellungen"> <img src="docs/screenshots/traymenue.png" width="220" alt="Tray-Menü"></p>
+<p align="center"><img src="docs/screenshots/pi-bildschirm.png" width="720" alt="Pi-Desktop im integrierten Viewer"></p>
+<p align="center"><img src="docs/screenshots/taskleiste.png" width="420" alt="Pi Relay im Windows-Infobereich"></p>
 
 ## Voraussetzungen
 
@@ -34,12 +35,31 @@ Beispiel **x11vnc** (X11-Desktop, z. B. Cinnamon), gestartet im Autostart des an
 x11vnc -localhost -rfbport 5900 -forever -shared -nopw -quiet -noxdamage
 ```
 
-Auf `127.0.0.1` ist der Server **aus dem Netzwerk** nicht erreichbar, Windows kommt nur über die SSH-Verbindung heran. Programme und weitere Benutzer **auf dem Pi selbst** können `127.0.0.1:5900` aber erreichen. Ohne VNC-Passwort ist das nur auf einem Pi vertretbar, den du allein nutzt und auf dem keine fremden Dienste laufen. Sonst ein VNC-Passwort setzen (WayVNC `enable_auth=true`, x11vnc `-rfbauth`): Pi Relay fragt es im Bildschirmfenster ab und behält es nur im Arbeitsspeicher. Nie auf `0.0.0.0` bzw. ohne `-localhost` betreiben. Pi Relay verbindet nur, wenn Port 5900 dem eigenen Benutzer, root oder dem angemeldeten Desktop-Benutzer gehört; ein fremder Prozess, der den Port vorher belegt, bekommt so weder Tastatur noch Zwischenablage.
+Beispiel **TigerVNC** (X11-Desktop, Paket `tigervnc-scraping-server`), ebenfalls im Autostart des angemeldeten Benutzers. Auf einem Pi 5 deutlich flüssiger als x11vnc (gemessen rund 45 statt 5 Bilder pro Sekunde):
+
+```bash
+X0tigervnc -display :0 -rfbport 5900 -localhost -SecurityTypes None -AlwaysShared -AcceptSetDesktopSize=0
+```
+
+`-localhost` lauscht nur auf 127.0.0.1 und ::1. `-SecurityTypes None` verzichtet auf ein VNC-Passwort, deshalb ist `-localhost` Pflicht. `-AlwaysShared` erlaubt mehrere Viewer gleichzeitig, `-AcceptSetDesktopSize=0` verhindert, dass ein Viewer die Auflösung verstellt. Der Wrapper `x0vncserver` startet dasselbe Programm. Im Bildschirmfenster ist Qualität 7 der beste Kompromiss (grüner Punkt am Regler); Stufe 9 erzeugt ein Vielfaches an Daten.
+
+Auf `127.0.0.1` ist der Server **aus dem Netzwerk** nicht erreichbar, Windows kommt nur über die SSH-Verbindung heran. Programme und weitere Benutzer **auf dem Pi selbst** können `127.0.0.1:5900` aber erreichen. Ohne VNC-Passwort ist das nur auf einem Pi vertretbar, den du allein nutzt und auf dem keine fremden Dienste laufen. Sonst ein VNC-Passwort setzen (WayVNC `enable_auth=true`, x11vnc `-rfbauth`): Pi Relay fragt es im Bildschirmfenster ab und behält es nur im Arbeitsspeicher. Nie auf `0.0.0.0` bzw. ohne `-localhost` betreiben. Pi Relay verbindet nur, wenn Port 5900 dem eigenen Benutzer oder root gehört, geprüft vor und nach dem Verbinden; ein fremder Prozess, der den Port vorher belegt, bekommt so weder Tastatur noch Zwischenablage.
+
+Statt eines VNC-Passworts lässt sich der Port auch auf den Desktop-Benutzer beschränken, zum Beispiel mit nftables. `1000` durch dessen UID ersetzen; der Worker von Pi Relay läuft als dieser Benutzer und bleibt erlaubt. Laden mit `sudo nft -f vnc-schutz.nft`, dauerhaft über `/etc/nftables.conf`:
+
+```
+table inet vnc_schutz {
+  chain ausgang {
+    type filter hook output priority 0; policy accept;
+    oifname "lo" tcp dport 5900 meta skuid != { 1000, 0 } reject with tcp reset
+  }
+}
+```
 
 Nach einem Neustart des Pi wartet Pi Relay geduldig: Ein Klick auf „Verbinden“, solange der Pi noch nicht antwortet, verbindet genau einmal, sobald er wieder da ist (bis zu 3 Minuten). Startet der VNC-Server erst nach der Desktop-Anmeldung, versucht der Viewer es bis zu 2 Minuten lang über die bestehende SSH-Verbindung weiter. Neue Abfragen des Sicherheitsschlüssels ohne deinen Klick gibt es nicht.
 
-- Ein zweiter Zugang namens `BackDoor` (z. B. mit einem Ersatz-Sicherheitsschlüssel) wird als einklappbarer Ersatzzugang unter dem ersten angezeigt; alle anderen Aliase erscheinen normal untereinander.
-- SSH-Zugänge als Aliase in `~/.ssh/config` (z. B. `Host MasterControl` mit `HostName 192.168.1.50`). Pi Relay liest nur öffentliche Schlüssel, kopiert keine privaten Schlüssel und erzeugt keine neuen.
+- Ein zweiter Zugang namens `Ersatzzugang` (z. B. mit einem Ersatz-Sicherheitsschlüssel) wird als einklappbarer Ersatzzugang unter dem ersten angezeigt; alle anderen Aliase erscheinen normal untereinander.
+- SSH-Zugänge als Aliase in `~/.ssh/config` (z. B. `Host MeinPi` mit `HostName 192.168.1.50`). Pi Relay liest nur öffentliche Schlüssel, kopiert keine privaten Schlüssel und erzeugt keine neuen.
 
 ## Bauen
 
@@ -56,10 +76,12 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 
 - Kein Netzwerkdienst auf dem Pi: Der Worker (`native/remote_worker.py`) läuft nur für die Dauer der SSH-Sitzung.
 - Der VNC-Tunnel kennt genau ein festes Ziel (`127.0.0.1:5900`), keine frei wählbare Adresse.
-- Agenten-Dateizugriffe sind auf den freigegebenen Ordner begrenzt. Ohne Befehlsrecht sind Dateien gesperrt, über die später Befehle laufen können (`.git/`, `.ssh/`, Shell- und Desktop-Startdateien). Schreibrechte bleiben trotzdem mächtig, etwa für Build-Skripte im Ordner. Freigegebene **Shell-Befehle** haben die Rechte des Linux-Benutzers; für echte Trennung einen eigenen eingeschränkten Pi-Benutzer verwenden.
+- Agenten-Dateizugriffe sind auf den freigegebenen Ordner begrenzt; `/` ist als Projektordner gesperrt, der Home-Ordner selbst nur zum Lesen. Ohne Befehlsrecht sind versteckte Dateien und Ordner (z. B. `.git/`, `.bashrc`) sowie ausführbare und mehrfach verlinkte Dateien gesperrt. Schlüssel und Zugangsdaten (`~/.ssh`, `~/.gnupg`, Tokens) sind für Agenten nie lesbar. Schreibrechte bleiben trotzdem mächtig, etwa für Build-Skripte im Ordner. Freigegebene **Shell-Befehle** haben die Rechte des Linux-Benutzers; für echte Trennung einen eigenen eingeschränkten Pi-Benutzer verwenden.
 - Der MCP-Server ist eine lokale Named Pipe nur für den aktuellen Windows-Benutzer; eine gleichnamige Pipe eines anderen Kontos wird abgelehnt.
-- Der lokale Port für einen externen Viewer (RealVNC/TigerVNC) bedient nur den Viewer, den Pi Relay selbst gestartet hat.
-- „Zwischenablage teilen“ gleicht Text automatisch ab, überspringt dabei aber Inhalte, die Passwortmanager als vertraulich markieren; die gehen nur über „An Pi“ auf den Pi.
+- Der lokale Port für einen externen Viewer (RealVNC/TigerVNC) bedient nur den Viewer, den Pi Relay selbst gestartet hat, und nur unter dem eigenen Windows-Konto.
+- Die SSH-Verbindung von Pi Relay übernimmt keine Weiterleitungen aus der ssh-config (Agent, X11, Ports, LocalCommand).
+- „Zwischenablage teilen“: Text vom Pi kommt nur an, solange das Bildschirmfenster vorne ist. Windows-Text geht beim Wechsel ins Fenster an den Pi, außer Inhalten, die Passwortmanager als vertraulich markieren (die nur über „An Pi“). Beide Richtungen lassen sich in den Einstellungen abschalten.
+- Die Oberfläche läuft mit strikter Content-Security-Policy, Downloads in den Fenstern sind gesperrt. Der Installer installiert nur innerhalb des Benutzerprofils.
 - Bekannte Grenze: Ein bereits kompromittierter Pi kann Pi Relay mit übergroßen Antworten zum Absturz bringen, aber keinen Code auf Windows ausführen.
 
 ## Hinweis zu Bildern und Marken
@@ -72,10 +94,10 @@ Der Quellcode steht unter der [MIT-Lizenz](LICENSE). Die Figuren, das Gehäusebi
 
 Pi Relay is a Windows tray app that keeps **one OpenSSH connection per access alias** to a Raspberry Pi and shares it between:
 
-- an **integrated VNC viewer** (noVNC, bundled locally) that tunnels RFB through that SSH connection to the Pi's VNC server (WayVNC or x11vnc) on `127.0.0.1:5900`. No open VNC port, no account, no external viewer needed. Smooth aspect-ratio fit, drag-and-drop file upload to the Pi desktop, clipboard sync. RealVNC/TigerVNC remain an optional, explicit fallback.
+- an **integrated VNC viewer** (noVNC, bundled locally) that tunnels RFB through that SSH connection to the Pi's VNC server (WayVNC, x11vnc or TigerVNC) on `127.0.0.1:5900`. No open VNC port, no account, no external viewer needed. Smooth aspect-ratio fit, drag-and-drop file upload to the Pi desktop, clipboard sync. RealVNC/TigerVNC remain an optional, explicit fallback.
 - a real **terminal** (xterm.js + Linux PTY),
 - **Codex and Claude** as agents on the Pi via a local MCP server (`PiRelay.exe --mcp codex|claude`), scoped to a project folder, with write and command access off by default.
 
-Hardware security keys (FIDO2 `sk-` keys) work; you confirm once per connection. Requirements, VNC server examples (WayVNC, x11vnc) and build steps are listed in the German section above (commands are the same). The UI is in German.
+Hardware security keys (FIDO2 `sk-` keys) work; you confirm once per connection. Requirements, VNC server examples (WayVNC, x11vnc, TigerVNC), an optional nftables rule and build steps are listed in the German section above (commands are the same). The UI is in German.
 
 **License:** source code under [MIT](LICENSE). The pictures and icons are not covered by it; all trademarks belong to their owners and Pi Relay is not affiliated with Raspberry Pi Ltd, Anthropic, OpenAI or RealVNC. Third-party components: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

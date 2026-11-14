@@ -5,7 +5,7 @@ using System.IO;
 
 namespace PiRelay;
 
-public sealed class UiSettings { public bool Minimized {get;set;} public bool Autostart {get;set;} public bool Motion {get;set;}=true; public string VncViewer {get;set;}=""; public bool ManagedViewer {get;set;}=true; public bool ExternalViewer {get;set;} }
+public sealed class UiSettings { public bool Minimized {get;set;} public bool Autostart {get;set;} public bool Motion {get;set;}=true; public string VncViewer {get;set;}=""; public bool ManagedViewer {get;set;}=true; public bool ExternalViewer {get;set;} public bool ClipboardFromPi {get;set;}=true; public bool ClipboardToPi {get;set;}=true; }
 public sealed class AgentConfig { public string Alias {get;set;}=""; public string Root {get;set;}=""; public bool AllowCommands {get;set;} public bool AllowWrite {get;set;} }
 // Board facts read once over an existing SSH session, remembered per Pi address.
 public sealed class DeviceFacts { public string Model {get;set;}=""; public long MemoryBytes {get;set;} public long StorageBytes {get;set;} public string StorageKind {get;set;}=""; }

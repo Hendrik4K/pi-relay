@@ -4,7 +4,7 @@ using PiRelay;
 
 var python=args[0];var root=Path.GetFullPath(args[1]);int launches=0;
 Directory.CreateDirectory(root);
-var session=new SharedSession("MasterControl",()=>{},_=>{
+var session=new SharedSession("MeinPi",()=>{},_=>{
  Interlocked.Increment(ref launches);
  var start=Discovery.StartInfo(python,"-u",Path.GetFullPath("native/remote_worker.py"));start.RedirectStandardInput=true;return start;
 });
@@ -13,8 +13,8 @@ JsonElement Arg(object value)=>JsonDocument.Parse(Json.Encode(value)).RootElemen
 try{
  await Task.WhenAll(session.Connect(),session.Connect());
  Require(launches==1&&session.IsReady,"Concurrent connects must reuse one transport");
- var writable=new AgentConfig{Alias="MasterControl",Root=root,AllowCommands=true,AllowWrite=true};
- var readonlyConfig=new AgentConfig{Alias="MasterControl",Root=root};
+ var writable=new AgentConfig{Alias="MeinPi",Root=root,AllowCommands=true,AllowWrite=true};
+ var readonlyConfig=new AgentConfig{Alias="MeinPi",Root=root};
  var codex=new AgentSession(()=>{});var claude=new AgentSession(()=>{});
  codex.Bind(session,writable);claude.Bind(session,readonlyConfig);
  var first=codex.Call("run",Arg(new{command="echo alpha"}));var second=codex.Call("run",Arg(new{command="echo beta"}));

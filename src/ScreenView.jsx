@@ -9,10 +9,6 @@ const send=(action,data={})=>bridge?.postMessage({action,...data});
 // Windows microphone for the Pi: 48 kHz mono s16le in 20 ms chunks, captured here (WASAPI shared
 // mode underneath) and fed by the host to the Pi's receiver over the existing SSH connection.
 const MIC_DEVICE_KEY='pi-relay-mic-device';
-const MIC_WORKLET=`class PiRelayMic extends AudioWorkletProcessor{constructor(){super();this.buf=new Int16Array(960);this.n=0;this.peak=0;}
-process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;for(let i=0;i<ch.length;i++){const v=Math.max(-1,Math.min(1,ch[i]));this.buf[this.n++]=v<0?v*32768:v*32767;const a=v<0?-v:v;if(a>this.peak)this.peak=a;
-if(this.n===960){this.port.postMessage({pcm:this.buf.buffer,level:this.peak},[this.buf.buffer]);this.buf=new Int16Array(960);this.n=0;this.peak=0;}}return true;}}
-registerProcessor('pi-relay-mic',PiRelayMic);`;
 // Level meter in decibels like common audio tools: -60 dBFS (empty) to 0 dBFS (full).
 const meterScale=peak=>Math.max(0,Math.min(1,(20*Math.log10(Math.max(peak,1e-6))+60)/60));
 const bytesToBase64=buffer=>{const bytes=new Uint8Array(buffer);let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(text);};
@@ -57,8 +53,7 @@ function useMic(flash){
   stopCapture();
   const stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
   const ctx=new AudioContext({sampleRate:48000});
-  const url=URL.createObjectURL(new Blob([MIC_WORKLET],{type:'text/javascript'}));
-  try{await ctx.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
+  await ctx.audioWorklet.addModule('mic-worklet.js');
   const node=new AudioWorkletNode(ctx,'pi-relay-mic',{numberOfInputs:1,numberOfOutputs:0,channelCount:1,channelCountMode:'explicit',channelInterpretation:'speakers'});
   let frames=0;
   node.port.onmessage=e=>{send('micChunk',{data:bytesToBase64(e.data.pcm)});if(++frames%3===0)setLevel(e.data.level);};
@@ -92,23 +87,27 @@ export function fromBase64(data){const text=atob(data),bytes=new Uint8Array(text
 // noVNC accepts any WebSocket-like channel. This one carries the RFB bytes through the
 // native host into the alias's existing SSH transport; no local port or WebSocket exists.
 export class RelayChannel {
- constructor(){this.binaryType='arraybuffer';this.protocol='';this.readyState='connecting';this.onopen=null;this.onmessage=null;this.onerror=null;this.onclose=null;}
+ constructor(){this.binaryType='arraybuffer';this.protocol='';this.readyState='connecting';this.onopen=null;this.onmessage=null;this.onerror=null;this.onclose=null;this.early=[];}
  send(data){if(this.readyState!=='open')return;const bytes=data instanceof Uint8Array?data:new Uint8Array(data);for(let i=0;i<bytes.length;i+=32768)send('screenSend',{data:toBase64(bytes.subarray(i,i+32768))});}
  close(){if(this.readyState==='closed')return;this.readyState='closed';send('screenDisconnect');setTimeout(()=>this.onclose?.({code:1000,reason:'',wasClean:true}),0);}
- opened(){if(this.readyState!=='connecting')return;this.readyState='open';this.onopen?.({});}
- receive(bytes){if(this.readyState==='open')this.onmessage?.({data:bytes.buffer});}
+ opened(){if(this.readyState!=='connecting')return;this.readyState='open';this.onopen?.({});for(const bytes of this.early.splice(0))this.receive(bytes);}
+ // Screen bytes (shared memory) and the "opened" message travel separately; early bytes wait for it.
+ receive(bytes){if(this.readyState==='open')this.onmessage?.({data:bytes.buffer});else if(this.readyState==='connecting')this.early.push(bytes);}
  ended(){if(this.readyState==='closed')return;this.readyState='closed';this.onclose?.({code:1006,reason:'',wasClean:false});}
 }
 
 const labels={waiting:'Bereit',connecting:'Verbinden …',credentials:'Anmeldung nötig',connected:'Verbunden',disconnected:'Getrennt',error:'Fehler',unavailable:'Nur in der App'};
 const latin1=text=>[...text].every(c=>c.charCodeAt(0)<=255);
 // noVNC quality 0-9 (JPEG/Tight); remembered per viewer window, never required for the page to work.
-const QUALITY_KEY='piRelay.screenQuality';
+// 7 is the measured optimum (Pi 5, TigerVNC: about 45 frames/s); 9 sends several times the data.
+const QUALITY_KEY='piRelay.screenQuality',QUALITY_OPTIMUM=7;
+// Waits before each automatic reopen; a connection that holds for 10 s starts the count again.
+const RETRY_DELAYS=[1000,2000,5000,10000,10000];
 const UPLOAD_CHUNK=768*1024,UPLOAD_LIMIT=512*1024*1024;
-function storedQuality(){try{const v=Number(localStorage.getItem(QUALITY_KEY));return Number.isInteger(v)&&v>=0&&v<=9&&localStorage.getItem(QUALITY_KEY)!==null?v:6;}catch{return 6;}}
+function storedQuality(){try{const v=Number(localStorage.getItem(QUALITY_KEY));return Number.isInteger(v)&&v>=0&&v<=9&&localStorage.getItem(QUALITY_KEY)!==null?v:QUALITY_OPTIMUM;}catch{return QUALITY_OPTIMUM;}}
 
 export function ScreenView(){
- const alias=new URLSearchParams(location.search).get('screen')||'MasterControl';
+ const alias=new URLSearchParams(location.search).get('screen')||'MeinPi';
  const host=useRef(null),rfb=useRef(null),channel=useRef(null),credentials=useRef(null),lastClipboard=useRef(''),share=useRef(true),noticeTimer=useRef(0);
  const [status,setStatus]=useState(bridge?'waiting':'unavailable');
  const [waitSeconds,setWaitSeconds]=useState(0);
@@ -121,6 +120,7 @@ export function ScreenView(){
  const [quality,setQuality]=useState(storedQuality);
  const [dragging,setDragging]=useState(false),[transfer,setTransfer]=useState(null);
  const uploads=useRef(new Map()),transferring=useRef(false);
+ const retry=useRef({attempt:0,timer:0,steady:0}),[retrying,setRetrying]=useState(0);
  const scaleRef=useRef(scale),statusRef=useRef(status),qualityRef=useRef(quality),fullscreenRef=useRef(fullscreen);scaleRef.current=scale;statusRef.current=status;qualityRef.current=quality;fullscreenRef.current=fullscreen;share.current=shareClipboard;
  // Black bars appear when the window's shape differs from the Pi desktop. Report how much the
  // host window can shrink so the scaled desktop fills it exactly (fit mode, normal window only).
@@ -134,22 +134,27 @@ export function ScreenView(){
 
  function flash(text){setNotice(text);clearTimeout(noticeTimer.current);noticeTimer.current=setTimeout(()=>setNotice(''),3200);}
  function teardown(){const current=rfb.current;rfb.current=null;channel.current=null;if(current){try{current.disconnect();}catch{}}}
- function connect(){
+ function stopRetry(){clearTimeout(retry.current.timer);clearTimeout(retry.current.steady);retry.current.attempt=0;setRetrying(0);}
+ function connect(){stopRetry();start(false);}
+ // `auto`: reopen after the Pi ended the picture; the host only reuses a live SSH connection then.
+ function start(auto){
   if(!bridge||rfb.current)return;
   setStatus('connecting');setMessage('');setWaitSeconds(0);
   const pipe=new RelayChannel();channel.current=pipe;
   const client=new RFB(host.current,pipe,credentials.current?{credentials:credentials.current}:{});
   rfb.current=client;
   client.scaleViewport=scaleRef.current==='fit';client.resizeSession=false;client.clipViewport=false;client.focusOnClick=true;client.showDotCursor=true;client.background='#17151a';client.qualityLevel=qualityRef.current;client.compressionLevel=2;
-  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');micRef.current.resume();if(share.current)send('screenClipboardRead',{reason:'sync'});});
-  client.addEventListener('disconnect',e=>{if(rfb.current!==client&&rfb.current!==null)return;rfb.current=null;channel.current=null;setStatus(current=>current==='error'?'error':e.detail.clean?'disconnected':'error');setMessage(current=>current||(e.detail.clean?'Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.':'Die Bildschirmverbindung wurde unterbrochen.'));});
+  client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setRetrying(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');micRef.current.resume();if(share.current)send('screenClipboardRead',{reason:'sync'});
+   clearTimeout(retry.current.steady);retry.current.steady=setTimeout(()=>{retry.current.attempt=0;},10000);});
+  client.addEventListener('disconnect',e=>{if(rfb.current!==client&&rfb.current!==null)return;rfb.current=null;channel.current=null;clearTimeout(retry.current.steady);setStatus(current=>current==='error'?'error':e.detail.clean?'disconnected':'error');setMessage(current=>current||(e.detail.clean?'Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.':'Die Bildschirmverbindung wurde unterbrochen.'));});
   client.addEventListener('credentialsrequired',e=>{setNeeds(e.detail.types||['password']);setStatus('credentials');});
-  client.addEventListener('securityfailure',e=>{credentials.current=null;setStatus('error');setMessage('VNC-Anmeldung abgelehnt'+(e.detail.reason?': '+e.detail.reason:'.'));});
-  client.addEventListener('clipboard',e=>{setClipboardSeen(true);if(!share.current)return;lastClipboard.current=e.detail.text;send('screenClipboardWrite',{text:e.detail.text});flash('Text vom Pi in die Windows-Zwischenablage übernommen.');});
+  client.addEventListener('securityfailure',e=>{credentials.current=null;retry.current.attempt=RETRY_DELAYS.length;setStatus('error');setMessage('VNC-Anmeldung abgelehnt'+(e.detail.reason?': '+e.detail.reason:'.'));});
+  // The host takes Pi text only while this window is in front (and when enabled) and confirms with a notice.
+  client.addEventListener('clipboard',e=>{setClipboardSeen(true);if(!share.current)return;lastClipboard.current=e.detail.text;send('screenClipboardWrite',{text:e.detail.text});});
   client.addEventListener('desktopname',e=>setMeta(m=>({...m,desktop:e.detail.name})));
-  send('screenOpen');
+  send('screenOpen',auto?{auto:true}:{});
  }
- function disconnect(){teardown();setWaitSeconds(0);if(micRef.current.on)micRef.current.disable();setStatus('disconnected');setMessage('Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.');}
+ function disconnect(){stopRetry();teardown();setWaitSeconds(0);if(micRef.current.on)micRef.current.disable();setStatus('disconnected');setMessage('Bildschirmverbindung getrennt. Die SSH-Verbindung bleibt bestehen.');}
  function submitCredentials(e){
   e.preventDefault();const values={};for(const type of needs)if(type==='username'||type==='password')values[type]=form[type];
   credentials.current=values;setForm({username:'',password:''});setStatus('connecting');rfb.current?.sendCredentials(values);
@@ -194,7 +199,11 @@ export function ScreenView(){
    case 'screenData':channel.current?.receive(fromBase64(m.data));break;
    case 'screenInfo':setMeta(v=>({...v,os:m.info?.os||'',host:m.info?.host||'',server:m.info?.server||''}));break;
    case 'micState':micRef.current.onState(m);break;
-   case 'screenClosed':setWaitSeconds(0);micRef.current.pause();if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');break;
+   case 'screenClosed':setWaitSeconds(0);micRef.current.pause();if(m.error){setStatus('error');}setMessage(m.message||'');channel.current?.ended();if(!rfb.current&&!m.error)setStatus('disconnected');
+    // The Pi ended the picture while SSH still stands (e.g. VNC server restarted): reopen with backoff.
+    if(m.retry&&retry.current.attempt<RETRY_DELAYS.length){const n=++retry.current.attempt;clearTimeout(retry.current.timer);retry.current.timer=setTimeout(()=>start(true),RETRY_DELAYS[n-1]);setRetrying(n);setStatus('connecting');}
+    else setRetrying(0);
+    break;
    case 'screenNotice':flash(m.message);break;
    case 'screenFullscreen':setFullscreen(m.on);setToolbar(!m.on);break;
    case 'screenResizeEnd':requestFit();break;
@@ -209,8 +218,10 @@ export function ScreenView(){
     if(m.reason==='manual')flash(latin1(text)?'Text an den Pi übergeben. Dort mit Strg+V einfügen.':'Text übergeben. Zeichen außerhalb von Latin-1 kann der Pi ersetzen.');
     break;}
   }};
-  bridge.addEventListener('message',receive);send('screenReady');
-  return()=>{bridge.removeEventListener('message',receive);teardown();clearTimeout(noticeTimer.current);};
+  // Screen bytes arrive as shared memory (no base64): copied once for noVNC, then released.
+  const shared=e=>{const buffer=e.getBuffer();try{if(e.additionalData?.type==='screenData')channel.current?.receive(new Uint8Array(buffer.slice(0)));}finally{bridge.releaseBuffer(buffer);}};
+  bridge.addEventListener('message',receive);bridge.addEventListener('sharedbufferreceived',shared);send('screenReady');
+  return()=>{bridge.removeEventListener('message',receive);bridge.removeEventListener('sharedbufferreceived',shared);teardown();clearTimeout(noticeTimer.current);clearTimeout(retry.current.timer);clearTimeout(retry.current.steady);};
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[]);
  useEffect(()=>{if(rfb.current)rfb.current.scaleViewport=scale==='fit';},[scale]);
@@ -240,7 +251,7 @@ export function ScreenView(){
        {[{deviceId:'',label:'Standard (Windows-Standardgerät)'},...mic.devices].map(d=><button key={d.deviceId||'default'} role="menuitemradio" aria-checked={mic.device===d.deviceId} onClick={()=>{setMicMenu(false);mic.choose(d.deviceId);}}><span className="mic-menu-check">{mic.device===d.deviceId&&<Check size={13} weight="bold"/>}</span>{d.label||'Mikrofon'}</button>)}
       </span>}
      </span>,
-     quality:<label className="screen-quality" title="Bildqualität: höher ist schärfer, braucht aber mehr Bandbreite. Die Auflösung selbst legt der Pi fest."><span>Qualität</span><input type="range" min="0" max="9" step="1" value={quality} aria-label="Bildqualität" onChange={e=>setQuality(Number(e.target.value))}/><output>{quality}</output></label>,
+     quality:<label className="screen-quality" title={'Bildqualität: höher ist schärfer, braucht aber mehr Daten. Grüner Punkt: gemessenes Optimum ('+QUALITY_OPTIMUM+'); 9 bremst die Bildrate stark. Die Auflösung legt der Pi fest.'}><span>Qualität</span><input type="range" min="0" max="9" step="1" value={quality} className={quality===QUALITY_OPTIMUM?'optimal':undefined} style={{'--q':quality,'--optimum':QUALITY_OPTIMUM}} aria-label="Bildqualität" onChange={e=>setQuality(Number(e.target.value))}/><output>{quality}</output></label>,
      connection:connected||busy||status==='credentials'?<button className="screen-tool" onClick={disconnect} title="Nur die Bildschirmverbindung trennen; SSH bleibt verbunden"><Plug size={17}/><span>Trennen</span></button>:<button className="screen-tool accent" disabled={!bridge} onClick={connect}><PlugsConnected size={17}/><span>Verbinden</span></button>,
      share:<label className="screen-share" aria-label="Zwischenablage teilen" title={clipboardSeen?'Der Pi hat bereits Text gesendet.':'Der Pi sendet erst Text, wenn dort etwas kopiert wird. Nur Text, keine Dateien.'}><input type="checkbox" checked={shareClipboard} onChange={e=>setShareClipboard(e.target.checked)}/><span>Zwischenablage teilen</span></label>,
      paste:<button className="screen-tool" disabled={!connected} onClick={pasteToPi} title="Text aus der Windows-Zwischenablage an den Pi übergeben"><ClipboardText size={17}/><span>An Pi</span></button>,
@@ -257,6 +268,7 @@ export function ScreenView(){
     <div className="screen-card-actions"><button className="primary-action compact" type="submit">Anmelden</button><button className="small-button" type="button" onClick={disconnect}>Abbrechen</button></div>
    </form>:<div className="screen-card">
     {busy&&waitSeconds>0?<><span className="screen-spinner" aria-hidden="true"/><strong>Warte auf den VNC-Server des Pi …</strong><p>Der Pi startet seinen Desktop vermutlich noch. Pi Relay versucht es über die bestehende SSH-Verbindung weiter (noch bis zu {waitSeconds} s).</p><button className="small-button" type="button" onClick={disconnect}>Abbrechen</button></>
+    :busy&&retrying>0?<><span className="screen-spinner" aria-hidden="true"/><strong>Bild unterbrochen · verbinde neu …</strong><p>Versuch {retrying} von {RETRY_DELAYS.length} über die bestehende SSH-Verbindung, ohne neue Anmeldung.</p><button className="small-button" type="button" onClick={disconnect}>Abbrechen</button></>
     :busy?<><span className="screen-spinner" aria-hidden="true"/><strong>Verbinde mit dem Pi-Bildschirm …</strong><p>Über die SSH-Verbindung {alias}. Ist sie getrennt, bestätige bei Aufforderung deinen Sicherheitsschlüssel.</p></>
     :status==='unavailable'?<><strong>Integrierter Viewer</strong><p>{message}</p></>
     :status==='waiting'?<><strong>Pi-Bildschirm</strong><p>Wird vorbereitet …</p></>
