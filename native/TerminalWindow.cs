@@ -23,7 +23,7 @@ public sealed class TerminalWindow : Window {
  private void OnOutput(string data)=>Send(new{type="terminalData",data});
  private void OnState(string message)=>Send(new{type="terminalState",message});
  private async Task Initialize(){try{
-  var environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PiRelay","WebView"));
+  var environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PiRelay","WebView"),ScreenWindow.EnvironmentOptions());
   await web.EnsureCoreWebView2Async(environment);web.DefaultBackgroundColor=Color.FromArgb(255,23,21,26);
   web.CoreWebView2.SetVirtualHostNameToFolderMapping("pi-relay.local",Path.Combine(AppContext.BaseDirectory,"ui"),CoreWebView2HostResourceAccessKind.DenyCors);
   web.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;web.CoreWebView2.Settings.AreDevToolsEnabled=false;web.CoreWebView2.Settings.IsStatusBarEnabled=false;

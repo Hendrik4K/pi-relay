@@ -87,7 +87,7 @@ public sealed class RelayWindow : Window {
   _=Initialize();_=PipeServer();
  }
  private async Task Initialize(){try{
-  var environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(dataFolder,"WebView"));await web.EnsureCoreWebView2Async(environment);
+  var environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(dataFolder,"WebView"),ScreenWindow.EnvironmentOptions());await web.EnsureCoreWebView2Async(environment);
   web.DefaultBackgroundColor=Color.FromArgb(255,23,21,26);web.CoreWebView2.Settings.AreDevToolsEnabled=false;web.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;web.CoreWebView2.Settings.IsStatusBarEnabled=false;
   web.CoreWebView2.SetVirtualHostNameToFolderMapping("pi-relay.local",Path.Combine(AppContext.BaseDirectory,"ui"),CoreWebView2HostResourceAccessKind.DenyCors);
   // User pictures (Pi case, companions) live outside the app folder so updates keep them.
@@ -255,7 +255,7 @@ public sealed class RelayWindow : Window {
  // start the alias's SSH login; a second click focuses the existing window of that alias.
  private void OpenScreen(string alias){
   if(!profiles.Any(p=>p.Alias==alias))throw new InvalidOperationException("Bekannten SSH-Zugang wählen");
-  var screen=screens.GetOrCreate(alias,()=>new ScreenWindow(alias,()=>EnsureConnection(alias),()=>saved.Settings),out var created);
+  var screen=screens.GetOrCreate(alias,()=>new ScreenWindow(alias,()=>EnsureConnection(alias),()=>saved.Settings,Log),out var created);
   if(created){screen.Finished+=()=>{screens.Release(alias,screen);Log(alias+": Pi-Bildschirm geschlossen · SSH bleibt verbunden");};Log(alias+": Pi-Bildschirm im integrierten Viewer geöffnet");}
   screen.Reveal();
  }

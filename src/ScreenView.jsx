@@ -123,7 +123,9 @@ export function ScreenView(){
  const [dragging,setDragging]=useState(false),[transfer,setTransfer]=useState(null);
  const uploads=useRef(new Map()),transferring=useRef(false);
  const retry=useRef({attempt:0,timer:0,steady:0}),[retrying,setRetrying]=useState(0);
- const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0);
+ // While the Pi desktop stands still TigerVNC sends next to nothing; the display then keeps the last
+ // rate measured during real activity (10+ updates/s) and goes live again as soon as things move.
+ const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0),heldFps=useRef(null);
  // Connection bar under the Pi name: from 1 px below the baseline down to the depth of a descender.
  const hostRef=useRef(null),[hostBar,setHostBar]=useState(null);
  const scaleRef=useRef(scale),statusRef=useRef(status),qualityRef=useRef(quality),fullscreenRef=useRef(fullscreen);scaleRef.current=scale;statusRef.current=status;qualityRef.current=quality;fullscreenRef.current=fullscreen;share.current=shareClipboard;
@@ -235,7 +237,7 @@ export function ScreenView(){
  const hostName=meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm';
  useLayoutEffect(()=>{const el=hostRef.current,probe=el?.querySelector('.screen-host-probe');if(!probe)return;const size=parseFloat(getComputedStyle(el).fontSize)||16;setHostBar({top:probe.offsetTop+1,height:Math.max(2,Math.round(size*0.25)-1)});},[hostName,fullscreen]);
  useEffect(()=>{if(rfb.current)rfb.current.scaleViewport=scale==='fit';},[scale]);
- useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;const t=setInterval(()=>{setFps(frames.current);frames.current=0;},1000);return()=>clearInterval(t);},[showFps,status]);
+ useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;const t=setInterval(()=>{const n=frames.current;frames.current=0;if(n>=10)heldFps.current=n;setFps(n>=10?n:heldFps.current??n);},1000);return()=>clearInterval(t);},[showFps,status]);
  useEffect(()=>{if(rfb.current)rfb.current.qualityLevel=quality;try{localStorage.setItem(QUALITY_KEY,String(quality));}catch{}},[quality]);
  useEffect(()=>{
   // F11 is the viewer's own shortcut; everything else goes to the Pi desktop.

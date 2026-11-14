@@ -24,7 +24,9 @@ public sealed class ScreenWindow : Window {
  public event Action? Finished;
  internal static string DataFolder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PiRelay","WebView");
  public string Alias=>bridge.Alias;
- public ScreenWindow(string alias,Func<Task<SharedSession>> ensure,Func<UiSettings>? settings=null){
+ private readonly Action<string> log;
+ public ScreenWindow(string alias,Func<Task<SharedSession>> ensure,Func<UiSettings>? settings=null,Action<string>? log=null){
+  this.log=log??(_=>{});
   this.settings=settings??(()=>new UiSettings());
   bridge=new(alias,ensure,Post,PostData);
   mic=new(ensure,Post);
@@ -41,6 +43,10 @@ public sealed class ScreenWindow : Window {
  }
  // Viewer options from the tray settings, applied to an open window right away.
  public void SettingsChanged()=>Post(new{type="screenSettings",showFps=settings().ShowFps});
+ // Chromium slows timers and painting of background or covered windows; the Pi desktop should keep its full
+ // frame rate while the viewer is open, even behind other windows. All Pi Relay windows share one WebView2
+ // folder, so they must use the same options.
+ internal static CoreWebView2EnvironmentOptions EnvironmentOptions()=>new("--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows");
  public void Reveal(){Show();if(WindowState==WindowState.Minimized)WindowState=fullscreen?WindowState.Maximized:WindowState.Normal;Activate();}
  private void Post(object message){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Post(message)));return;}if(ready&&!finished)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(message));}
  // Screen bytes reach the renderer as shared memory: no base64, no JSON. The page copies them and
@@ -58,7 +64,7 @@ public sealed class ScreenWindow : Window {
   Post(new{type="screenData",data=Convert.ToBase64String(chunk)});
  }
  private async Task Initialize(){try{
-  var environment=await CoreWebView2Environment.CreateAsync(null,DataFolder);
+  var environment=await CoreWebView2Environment.CreateAsync(null,DataFolder,EnvironmentOptions());
   await web.EnsureCoreWebView2Async(environment);if(finished)return;web.DefaultBackgroundColor=Color.FromArgb(255,23,21,26);
   web.CoreWebView2.SetVirtualHostNameToFolderMapping("pi-relay.local",Path.Combine(AppContext.BaseDirectory,"ui"),CoreWebView2HostResourceAccessKind.DenyCors);
   var settings=web.CoreWebView2.Settings;settings.AreDefaultContextMenusEnabled=false;settings.AreDevToolsEnabled=false;settings.IsStatusBarEnabled=false;settings.IsZoomControlEnabled=false;settings.IsPinchZoomEnabled=false;
@@ -99,7 +105,10 @@ public sealed class ScreenWindow : Window {
    SetClipboard(PlainText(text));Post(new{type="screenNotice",message="Text vom Pi in die Windows-Zwischenablage übernommen."});break;}
   // Windows → Pi: automatically only when enabled and never content a password manager marked private;
   // "An Pi" stays an explicit choice.
-  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual";Post(new{type="screenClipboardText",text=why=="manual"||settings().ClipboardToPi&&!PrivateClipboard()?ReadClipboard():"",reason=why});break;}
+  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual";var manual=why=="manual";var allowed=manual||settings().ClipboardToPi;var hidden=!manual&&allowed&&PrivateClipboard();var text=allowed&&!hidden?ReadClipboard():"";
+   // Only the decision and the length are logged, never the content.
+   log("Zwischenablage → Pi ("+(manual?"„An Pi“":"automatisch")+"): "+(!allowed?"aus (Einstellung)":hidden?"übersprungen, vertraulich markiert":text==""?"kein Text in der Windows-Zwischenablage":"übergeben, "+text.Length+" Zeichen"));
+   Post(new{type="screenClipboardText",text,reason=why});break;}
  }}
  internal static string PlainText(string text)=>string.Concat(text.Where(c=>!char.IsControl(c)||c is '\t' or '\n' or '\r'));
  private static void SetClipboard(string text){for(var attempt=0;;attempt++){try{System.Windows.Clipboard.SetText(text);return;}catch(System.Runtime.InteropServices.COMException)when(attempt<3){Thread.Sleep(40);}}}

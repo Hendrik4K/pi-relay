@@ -1,7 +1,10 @@
 # Pi Relay
 
-**Windows-Tray-App für den Raspberry Pi: Terminal, Pi-Bildschirm (VNC) und KI-Agenten über eine einzige SSH-Verbindung.**
-*A Windows tray app for your Raspberry Pi: terminal, Pi desktop (VNC) and AI agents over a single SSH connection. English below.*
+**Dein Raspberry Pi läuft headless in der Ecke und du willst trotzdem seinen Desktop sehen? Ohne Monitor, ohne HDMI-Kabel, ohne offenen VNC-Port im Heimnetz? Hier ist die Lösung.**
+
+Pi Relay holt den Pi-Bildschirm flüssig und gestochen scharf in ein Windows-Fenster, lokal über deine eigene SSH-Verbindung. Fenster zu? Kein Problem: Pi Relay wartet unten in der Taskleiste, ein Klick, kleines Pop-up-Menü, und der Pi ist wieder da. Terminal und KI-Agenten (Codex, Claude) gibt's gleich mit dazu.
+
+*Running your Raspberry Pi headless and still want its desktop on Windows? No monitor, no HDMI cable, no VNC port open on your network: Pi Relay shows the Pi screen fast and sharp in a local window over your own SSH connection. Closed it? It waits in the taskbar, one click on the small pop-up menu brings it back. Terminal and AI agents included. English below.*
 
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
@@ -92,7 +95,9 @@ Der Quellcode steht unter der [MIT-Lizenz](LICENSE). Die Figuren, das Gehäusebi
 
 ## English
 
-Pi Relay is a Windows tray app that keeps **one OpenSSH connection per access alias** to a Raspberry Pi and shares it between:
+**Your Pi runs headless and you still want its desktop on Windows? This is it.** Close the window any time, Pi Relay waits in the taskbar and one click on its pop-up menu brings the Pi back.
+
+Under the hood, Pi Relay is a Windows tray app that keeps **one OpenSSH connection per access alias** to a Raspberry Pi and shares it between:
 
 - an **integrated VNC viewer** (noVNC, bundled locally) that tunnels RFB through that SSH connection to the Pi's VNC server (WayVNC, x11vnc or TigerVNC) on `127.0.0.1:5900`. No open VNC port, no account, no external viewer needed. Smooth aspect-ratio fit, drag-and-drop file upload to the Pi desktop, clipboard sync. RealVNC/TigerVNC remain an optional, explicit fallback.
 - a real **terminal** (xterm.js + Linux PTY),
