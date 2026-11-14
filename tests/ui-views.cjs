@@ -165,6 +165,11 @@ const {chromium}=load('playwright');
   assert.equal(await page.locator('header .vnc-badge').innerText(),'x11vnc','Badge names the Pi\'s VNC server once known');
   assert(await page.locator('.view-screen').evaluate(e=>e.scrollHeight<=e.clientHeight+1),'Screen view has no scrolling content');
   assert.equal(await page.locator('.vnc-server-card code').innerText(),'x11vnc 0.9.17');
+  // VNC server re-check: spinning, then 'Auf dem neuesten Stand' in place of the subtitle with a green version flash; no height change.
+  {const h0=(await page.locator('.vnc-server-card').boundingBox()).height;await page.getByRole('button',{name:'VNC-Server erneut prüfen'}).click();
+   assert.equal(await page.locator('.vnc-server-card [role=status]').innerText(),'Suche nach Updates …');
+   await page.locator('.vnc-server-card [role=status]').filter({hasText:'Auf dem neuesten Stand'}).waitFor({timeout:3000});
+   assert.equal(await page.locator('.vnc-server-card code.version-flash').count(),1);assert.equal((await page.locator('.vnc-server-card').boundingBox()).height,h0,'Card keeps its height');}
   assert.equal(await page.getByRole('button',{name:'Bildschirm öffnen',exact:true}).isEnabled(),true);
   await save('screen');
   const screen=await page.locator('.relay').boundingBox();assert.equal(screen.width,panel.width);assert.equal(screen.height,panel.height);

@@ -200,7 +200,7 @@ export function App() {
   else if(action==='skipViewerUpdate')setData(d=>({...d,viewer:{...d.viewer,skipped:true}}));
   else if(action==='restoreViewerUpdate')setData(d=>({...d,viewer:{...d.viewer,skipped:false}}));
   else if(action==='saveSettings')setData(d=>({...d,settings:{...d.settings,...payload.settings}}));
-  else if(action==='checkVncServer')notify('Designvorschau: In der Windows-App liest Pi Relay hier Sender und Version vom Pi.');
+  else if(action==='checkVncServer')setTimeout(()=>setData(d=>({...d,vncServers:Object.fromEntries(Object.entries(d.vncServers||{}).map(([h,v])=>[h,{...v,checkedAt:Date.now()}]))})),700);
   else if(action==='cancelWait')setData(d=>({...d,profiles:d.profiles.map(p=>p.state==='waiting'?{...p,state:'disconnected'}:p)}));
   else if(action==='pickIcon')notify('Designvorschau: In der Windows-App öffnet sich hier die Bildauswahl.');
   else if(action==='setHost'){setData(d=>({...d,profiles:d.profiles.map(p=>p.hostname===payload.from?{...p,hostname:payload.to}:p)}));notify('Designvorschau: In der Windows-App wird die SSH-Konfiguration angepasst.');}

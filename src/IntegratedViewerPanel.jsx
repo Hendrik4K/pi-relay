@@ -33,14 +33,19 @@ export function IntegratedViewerPanel({info:i,call}) {
 // Pi Relay: the card only reads version, apt's offer and the listen scope, and offers the command.
 const debianVersion=v=>(v||'').replace(/^\d+:/,'').replace(/-[^-]*$/,'');
 export function VncServerCard({info,connected,alias,call}) {
- const [copied,setCopied]=useState(false);
+ const [copied,setCopied]=useState(false),[checking,setChecking]=useState(false),[result,setResult]=useState(''),seen=useRef(info?.checkedAt);
+ // A manual check spins the icon; the fresh result shows in place of the subtitle and the version flashes.
+ useEffect(()=>{if(!checking||!info?.checkedAt||info.checkedAt===seen.current)return;seen.current=info.checkedAt;setChecking(false);setResult(info.update?'update':'current');
+  const t=setTimeout(()=>setResult(''),3200);return()=>clearTimeout(t);},[info?.checkedAt,checking]);
+ useEffect(()=>{if(!checking)return;const t=setTimeout(()=>setChecking(false),12000);return()=>clearTimeout(t);},[checking]);
+ function check(){seen.current=info?.checkedAt;setResult('');setChecking(true);call('checkVncServer',{alias});}
  const command=info?.package?'sudo apt update && sudo apt install --only-upgrade '+info.package:'';
  const scope=!info?(connected?'Wird geprüft …':'Verbinden, um den Sender zu sehen'):!info.server?'Kein VNC-Server aktiv':info.localOnly?'Nur lokal · über SSH geschützt':'Achtung: lauscht im Netzwerk';
  const state=!info?.server?'':info.update?'':info.installed?' · aktuell':'';
  function copy(){try{navigator.clipboard?.writeText(command);setCopied(true);setTimeout(()=>setCopied(false),2000);}catch{}}
  return <section className="viewer-card vnc-server-card" aria-label="VNC-Server auf dem Pi">
-  <div className="viewer-current"><div><strong>VNC-Server auf dem Pi</strong><span role="status" className={info?.server&&!info.localOnly?'vnc-scope-warning':''} title={(info?.addresses?.length?'Lauscht auf '+info.addresses.join(', ')+' Port 5900. ':'')+'Updates kommen über Raspberry Pi OS (apt); Stand der Paketlisten auf dem Pi.'}>{scope}{state}{info?.update&&<> · Update: <strong className="vnc-candidate">{debianVersion(info.candidate)}</strong></>}</span></div>
-   <div className="vnc-version"><code title={info?.installed?'Paket '+info.package+' '+info.installed:''}>{info?.server?info.server+' '+debianVersion(info.installed):'–'}</code><button className="icon-button vnc-recheck" disabled={!connected} aria-label="VNC-Server erneut prüfen" title="Erneut prüfen" onClick={()=>call('checkVncServer',{alias})}><ArrowClockwise size={15}/></button></div></div>
+  <div className="viewer-current"><div><strong>VNC-Server auf dem Pi</strong><span role="status" className={result==='current'?'viewer-current-ok':info?.server&&!info.localOnly?'vnc-scope-warning':''} title={(info?.addresses?.length?'Lauscht auf '+info.addresses.join(', ')+' Port 5900. ':'')+'Updates kommen über Raspberry Pi OS (apt); Stand der Paketlisten auf dem Pi.'}>{checking?'Suche nach Updates …':result==='current'?'Auf dem neuesten Stand':result==='update'?<>Update verfügbar: <strong className="vnc-candidate">{debianVersion(info.candidate)}</strong></>:<>{scope}{state}{info?.update&&<> · Update: <strong className="vnc-candidate">{debianVersion(info.candidate)}</strong></>}</>}</span></div>
+   <div className="vnc-version"><code className={result==='current'?'version-flash':''} title={info?.installed?'Paket '+info.package+' '+info.installed:''}>{info?.server?info.server+' '+debianVersion(info.installed):'–'}</code><button className={'icon-button vnc-recheck'+(checking?' spinning':'')} disabled={!connected||checking} aria-label="VNC-Server erneut prüfen" title="Auf Updates prüfen" onClick={check}><ArrowClockwise size={15}/></button></div></div>
   {info?.update&&<div className="vnc-update-command"><code>{command}</code><button className="small-button" onClick={copy}>{copied?'Kopiert':'Kopieren'}</button></div>}
  </section>;
 }

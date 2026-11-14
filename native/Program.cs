@@ -42,7 +42,8 @@ public sealed class RelayWindow : Window {
  private readonly IntegratedViewer integratedViewer;
  private readonly HostReachability reachability;
  private readonly Dictionary<string,CancellationTokenSource> waitingFor=new();
- private readonly Dictionary<string,JsonElement> vncServers=new(StringComparer.OrdinalIgnoreCase);
+ private readonly Dictionary<string,Dictionary<string,JsonElement>> vncServers=new(StringComparer.OrdinalIgnoreCase);
+ private static Dictionary<string,JsonElement> Checked(JsonElement info){var fields=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(info.GetRawText())??new();fields["checkedAt"]=JsonSerializer.SerializeToElement(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());return fields;}
  private readonly IconStore icons;
  private int reachTicks;
  private readonly List<EventRow> events=[];
@@ -178,7 +179,7 @@ public sealed class RelayWindow : Window {
   case "connectScreen":if(saved.Settings.ExternalViewer)await OpenExternalScreen(r.GetProperty("alias").GetString()??"");else OpenScreen(r.GetProperty("alias").GetString()??"");break;
   case "checkIntegratedViewer":await integratedViewer.Check();break;
   // Which VNC server the Pi runs, its version and listen scope: read-only, existing connection only.
-  case "checkVncServer":{var vncAlias=r.GetProperty("alias").GetString()??"";if(!connections.TryGetValue(vncAlias,out var vncSession)||!vncSession.IsReady)throw new InvalidOperationException("Zuerst mit dem Pi verbinden.");var vncHost=profiles.First(p=>p.Alias==vncAlias).Hostname;vncServers[vncHost]=await vncSession.Request("vnc_server_info");Push();break;}
+  case "checkVncServer":{var vncAlias=r.GetProperty("alias").GetString()??"";if(!connections.TryGetValue(vncAlias,out var vncSession)||!vncSession.IsReady)throw new InvalidOperationException("Zuerst mit dem Pi verbinden.");var vncHost=profiles.First(p=>p.Alias==vncAlias).Hostname;vncServers[vncHost]=Checked(await vncSession.Request("vnc_server_info"));Push();break;}
   case "skipIntegratedViewer":integratedViewer.Skip(r.GetProperty("version").GetString()??"");break;
   case "restoreIntegratedViewer":integratedViewer.Restore();break;
   case "buildIntegratedViewer":integratedViewer.StartBuild(r.GetProperty("version").GetString()??"");Log("Integrierter Viewer: Update-Build im PowerShell-Fenster gestartet");break;
@@ -235,7 +236,7 @@ public sealed class RelayWindow : Window {
   finally{waitingFor.Remove(alias);cancel.Dispose();CheckReachability();Push();}
  }
  // Which VNC server the Pi runs (for the header badge and the screen view); read-only, failures ignored.
- private async Task LoadVncServer(string alias,SharedSession session){try{var host=profiles.FirstOrDefault(p=>p.Alias==alias)?.Hostname;if(string.IsNullOrEmpty(host))return;vncServers[host]=await session.Request("vnc_server_info");Push();}catch{}}
+ private async Task LoadVncServer(string alias,SharedSession session){try{var host=profiles.FirstOrDefault(p=>p.Alias==alias)?.Hostname;if(string.IsNullOrEmpty(host))return;vncServers[host]=Checked(await session.Request("vnc_server_info"));Push();}catch{}}
  // Read-only board facts for the header; failures just leave the previous values.
  private async Task LoadDeviceFacts(string alias,SharedSession session){
   try{

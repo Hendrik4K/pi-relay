@@ -324,3 +324,8 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 @keyframes companion-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
 [data-motion=false] .agent:not(.live) .avatar,[data-motion=false] .sleep-z i{animation:none}[data-motion=false] .sleep-z i{opacity:.7}[data-motion=false] .sleep-z i:nth-child(2){transform:translate(5px,-9px)}[data-motion=false] .sleep-z i:nth-child(3){transform:translate(10px,-19px)}
 @media(prefers-reduced-motion:reduce){.agent:not(.live) .avatar,.sleep-z i{animation:none}.sleep-z i{opacity:.7}}
+
+/* Status text replaces the subtitle in place (own line under the title), so the cards keep their height. */
+.view-screen .viewer-current>div:first-child{display:grid;gap:3px;min-width:0}
+.view-screen .viewer-current>div:first-child>span{min-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vnc-recheck.spinning svg{animation:recheck-spin .8s linear infinite}
