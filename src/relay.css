@@ -232,3 +232,22 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .screen-chain.live:before{border-color:#e54871}
 [data-motion=false] .screen-chain:before{transition:none}
 .screen-chain{padding-left:17px}.screen-chain:before{left:2px;width:12px}
+
+/* The Pi -> first access route is one solid line; while connected a soft light runs along it from
+   the top left to the bottom right and repeats. Backup routes stay dashed grey. */
+.session-line.first,.has-backup .session-line.first{border-style:solid}
+.session-line.first.live:after{content:'';position:absolute;inset:0 0 -3px -3px;border:solid transparent;border-width:0 0 3px 3px;border-radius:0 0 0 18px;background:linear-gradient(135deg,transparent 42%,#ffd3df 50%,transparent 58%) border-box;background-size:300% 300%;-webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0) border-box;-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) padding-box exclude,linear-gradient(#000 0 0) border-box;animation:route-shimmer 2.6s ease-in-out infinite;pointer-events:none}
+@keyframes route-shimmer{0%{background-position:100% 100%}70%,100%{background-position:0% 0%}}
+[data-motion=false] .session-line.first.live:after{animation:none;display:none}
+@media(prefers-reduced-motion:reduce){.session-line.first.live:after{animation:none;display:none}}
+
+/* Subtitle under the brand: heavier and slightly larger for legibility; the fixed line box keeps the
+   header divider exactly where it was. */
+.brand div>span{font-weight:700;color:#d6cbd9}@media(min-width:501px){.brand div>span{font-size:9px;line-height:11px;height:11px}}
+/* The main route rises out of the case picture: it starts a little higher, under the case, and fades
+   in softly instead of beginning with a hard edge. */
+.session-line.first,.has-backup .session-line.first{top:-62px;height:90px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 34px);mask-image:linear-gradient(to bottom,transparent 0,#000 34px)}
+/* The route's horizontal end meets the access name at half the height of its lowercase letters;
+   the BackDoor +/- circle sits correspondingly lower on the line. */
+.session-line.first,.has-backup .session-line.first{height:94.5px}
+.has-backup .backup-toggle,.has-backup .backup-toggle:hover,.has-backup .backup-toggle[aria-expanded=true]{top:-1px}

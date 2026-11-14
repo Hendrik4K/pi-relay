@@ -50,6 +50,8 @@ const {chromium}=load('playwright');
   // Drive first; a pointer entry from the left turns it to RAM, an entry from the right turns it back.
   assert.equal(await page.locator('.spec-flip').getAttribute('data-face'),'front');
   assert.equal(await page.locator('.spec-front').innerText(),'128GB USB');assert.equal(await page.locator('.spec-back').innerText(),'16GB RAM');
+  {const route=await page.locator('.session-line.first').evaluate(e=>[getComputedStyle(e).borderLeftStyle,getComputedStyle(e,'::after').animationName]);assert.deepEqual(route,['solid','route-shimmer'],'Connected first route is solid with a running shimmer');
+   assert.equal(await page.locator('.brand div>span').evaluate(e=>getComputedStyle(e).fontWeight),'700','Subtitle is bold');}
   {const [num,unit,title]=await page.evaluate(()=>[document.querySelector('.spec-back .spec-num'),document.querySelector('.spec-back .spec-unit'),document.querySelector('.device-copy h2')].map(e=>parseFloat(getComputedStyle(e).fontSize)));assert(Math.abs(num-title)<0.6&&Math.abs(unit-title*0.72)<0.6,'Spec number matches the heading, unit at lowercase height: '+[num,unit,title]);}
   const flip=await page.locator('.spec-flip').boundingBox();
   await page.mouse.move(flip.x-10,flip.y+flip.height/2);await page.mouse.move(flip.x+3,flip.y+flip.height/2);await page.waitForTimeout(600);
@@ -63,11 +65,11 @@ const {chromium}=load('playwright');
   assert(collapseX<screenX&&screenX<gearX,'Header order arrow, screen, gear');
   // The BackDoor toggle is a round node centred on the tree line, like the ball above it.
   const toggle=await page.getByRole('button',{name:'BackDoor ausklappen'}).boundingBox(),ball=await page.locator('.session-line.first').boundingBox();
-  // The gutter of the first access is the BackDoor toggle: a + fades in on hover, the dashed route stays visible.
+  // The gutter of the first access is the BackDoor toggle: a + fades in on hover, the solid route stays visible.
   assert.equal(await page.locator('.backup-toggle svg').evaluate(e=>getComputedStyle(e).opacity),'0');
   await page.getByRole('button',{name:'BackDoor ausklappen'}).hover();await page.waitForTimeout(450);
   assert.equal(await page.locator('.backup-toggle svg').evaluate(e=>getComputedStyle(e).opacity),'1','Plus fades in over the route');
-  assert.equal(await page.locator('.session-line.first').evaluate(e=>getComputedStyle(e).borderBottomStyle),'dashed');
+  assert.equal(await page.locator('.session-line.first').evaluate(e=>getComputedStyle(e).borderBottomStyle),'solid','Main route is a solid line');
   assert(await page.locator('.session-line.first').evaluate(e=>e.classList.contains('live')),'Connected access draws the red route');
   assert(Math.abs(toggle.x+toggle.width/2-ball.x)<=2,'Toggle sits on the tree line');
   assert.equal(await page.getByRole('button',{name:'MasterControl Pi-Bildschirm öffnen'}).count(),1,'Quick screen button beside the terminal');
@@ -77,7 +79,10 @@ const {chromium}=load('playwright');
   assert.equal(await page.getByRole('button',{name:'BackDoor einklappen'}).getAttribute('aria-expanded'),'true','Arrow flips when expanded');
   // The route bends into the access name (not the status line); expanding shows the BackDoor branch.
   const name=await page.locator('.sessions>.session').first().locator('.session-copy strong').boundingBox(),route=await page.locator('.session-line.first').boundingBox();
-  assert(Math.abs(route.y+route.height-(name.y+name.height/2))<=3,'Route ends level with the access name');
+  // The horizontal stroke meets the name at half the height of its lowercase letters.
+  const xMid=await page.locator('.sessions>.session').first().locator('.session-copy strong').evaluate(e=>{const probe=document.createElement('span');probe.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';e.appendChild(probe);const base=probe.getBoundingClientRect().top;probe.remove();const cs=getComputedStyle(e),c=document.createElement('canvas').getContext('2d');c.font=cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily;return base-c.measureText('a').actualBoundingBoxAscent/2;});
+  const stroke=await page.locator('.session-line.first').evaluate(e=>e.getBoundingClientRect().bottom-parseFloat(getComputedStyle(e).borderBottomWidth)/2);
+  assert(Math.abs(stroke-xMid)<=1.5,'Route ends at half the lowercase height of the access name: '+stroke+' vs '+xMid);
   assert.equal(await page.locator('.backup-session .backup-route').evaluate(e=>e.classList.contains('live')),false,'Unconnected BackDoor route is grey');
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('.backup-route-stub')).opacity==='1',null,{timeout:2000});
   await page.waitForTimeout(280);
