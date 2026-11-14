@@ -293,3 +293,34 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 @keyframes chain-ping{0%{background-position:0 100%;animation-timing-function:ease-in}34%{background-position:0 0;animation-timing-function:ease-out}68%,100%{background-position:0 100%}}
 [data-motion=false] .screen-chain.live:after{animation:none;display:none}
 @media(prefers-reduced-motion:reduce){.screen-chain.live:after{animation:none;display:none}}
+
+/* B) Home: the main route is dashed grey while disconnected; solid with the ping only when connected. */
+.session-line.first:not(.live),.has-backup .session-line.first:not(.live){border-style:dashed}
+
+/* C) Screen view: the viewer is the main box; a small cable leaves its bottom-left edge, runs down and
+   bends right into the slimmer Pi VNC server box. Dashed grey while disconnected, solid red with the
+   ping-and-answer light while connected. The old side bracket is gone. */
+.screen-chain{padding-left:0}.screen-chain:before,.screen-chain.live:after{content:none;display:none}
+.view-screen .integrated-card{padding:12px 12px;margin-bottom:8px}
+.view-screen .vnc-server-card{position:relative;margin-left:30px;overflow:visible}
+.vnc-server-card:before{content:'';position:absolute;left:-17px;top:-11px;bottom:calc(50% - 1.5px);width:16px;border:0 dashed #8e748a;border-width:0 0 3px 3px;border-radius:0 0 0 12px;pointer-events:none;transition:border-color .35s ease}
+.screen-chain.live .vnc-server-card:before{border-style:solid;border-color:#e54871}
+.screen-chain.live .vnc-server-card:after{content:'';position:absolute;left:-17px;top:-11px;bottom:calc(50% - 1.5px);width:16px;border:solid transparent;border-width:0 0 3px 3px;border-radius:0 0 0 12px;background:linear-gradient(135deg,transparent 42%,#ffd3df 50%,transparent 58%) border-box;background-size:300% 300%;-webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0) border-box;-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) padding-box exclude,linear-gradient(#000 0 0) border-box;animation:route-ping 4.6s infinite;pointer-events:none}
+[data-motion=false] .screen-chain.live .vnc-server-card:after{display:none}
+@media(prefers-reduced-motion:reduce){.screen-chain.live .vnc-server-card:after{display:none}}
+.viewer-recheck{width:28px;height:28px}.viewer-recheck.spinning svg{animation:recheck-spin .8s linear infinite}
+@keyframes recheck-spin{to{transform:rotate(360deg)}}
+.version-flash{animation:version-flash 1.1s ease-out 1}
+@keyframes version-flash{0%{color:#39ff88;text-shadow:0 0 10px #39ff88cc}60%{color:#39ff88;text-shadow:0 0 6px #39ff8866}100%{color:inherit;text-shadow:none}}
+.viewer-current-ok{color:#5cf29a!important}
+
+/* E) Disconnected companions sleep: grey, slowly breathing, with drifting z's. */
+.agent:not(.live) .avatar{filter:grayscale(1) brightness(.78);animation:companion-breathe 4.2s ease-in-out infinite;transform-origin:50% 90%}
+.avatar-button{position:relative}
+.sleep-z{position:absolute;top:-4px;right:-6px;width:22px;height:30px;pointer-events:none;font:700 11px 'Segoe UI',sans-serif;color:#b9adbd}
+.sleep-z i{position:absolute;left:0;bottom:0;font-style:normal;opacity:0;animation:sleep-z 3.6s ease-in infinite}
+.sleep-z i:nth-child(2){animation-delay:1.2s;font-size:9px}.sleep-z i:nth-child(3){animation-delay:2.4s;font-size:13px}
+@keyframes sleep-z{0%{opacity:0;transform:translate(0,0)}20%{opacity:.9}100%{opacity:0;transform:translate(10px,-22px)}}
+@keyframes companion-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+[data-motion=false] .agent:not(.live) .avatar,[data-motion=false] .sleep-z i{animation:none}[data-motion=false] .sleep-z i{opacity:.7}[data-motion=false] .sleep-z i:nth-child(2){transform:translate(5px,-9px)}[data-motion=false] .sleep-z i:nth-child(3){transform:translate(10px,-19px)}
+@media(prefers-reduced-motion:reduce){.agent:not(.live) .avatar,.sleep-z i{animation:none}.sleep-z i{opacity:.7}}

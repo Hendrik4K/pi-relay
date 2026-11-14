@@ -78,6 +78,7 @@ const {chromium}=load('playwright');
   assert(quick.x+quick.width<=term.x,'Quick screen button sits left of the terminal button');
   await page.getByRole('button',{name:'BackDoor ausklappen'}).click();
   assert.equal(await page.getByRole('button',{name:'BackDoor einklappen'}).getAttribute('aria-expanded'),'true','Arrow flips when expanded');
+  await page.waitForTimeout(700);
   // The route bends into the access name (not the status line); expanding shows the BackDoor branch.
   const name=await page.locator('.sessions>.session').first().locator('.session-copy strong').boundingBox(),route=await page.locator('.session-line.first').boundingBox();
   // The horizontal stroke meets the name at half the height of its lowercase letters.
@@ -211,6 +212,14 @@ const {chromium}=load('playwright');
   await waitPage.locator('.device-state.waiting').click();
   await waitPage.locator('.device-state.waiting').waitFor({state:'detached'});
   await waitPage.close();
-  console.log('PASS: compact overview, stacked device status, waiting for a restarting Pi (cancel), backup drawer/key icon, transient help, agent buttons, views, keyboard return, collapse direction, 360px layout and reduced motion.');
+  // Disconnected companions sleep (grey, z's); the main route is dashed while the Pi is not connected.
+  const sleepPage=await browser.newPage({viewport:{width:900,height:760}});
+  await sleepPage.goto((process.env.PI_RELAY_QA_URL||'http://127.0.0.1:4173/').split('?')[0]+'?design=1&agents-off=1&pi-offline=1');
+  await sleepPage.getByRole('heading',{name:'Raspberry Pi 5'}).waitFor();
+  assert.equal(await sleepPage.locator('.sleep-z').count(),2,'Both companions sleep while disconnected');
+  assert((await sleepPage.locator('.agent.codex .avatar').evaluate(e=>getComputedStyle(e).filter)).includes('grayscale(1)'),'Sleeping companion is grey');
+  assert.equal(await sleepPage.locator('.session-line.first').evaluate(e=>getComputedStyle(e).borderBottomStyle),'dashed','Disconnected route is dashed');
+  await sleepPage.close();
+  console.log('PASS: compact overview, stacked device status, waiting for a restarting Pi (cancel), sleeping companions and dashed route while disconnected, backup drawer/key icon, transient help, agent buttons, views, keyboard return, collapse direction, 360px layout and reduced motion.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

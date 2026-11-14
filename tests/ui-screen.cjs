@@ -93,8 +93,7 @@ function mockHost(){
   await page.locator('.screen-host',{hasText:'Raspi5'}).waitFor();
   assert.equal(await page.locator('.screen-os').innerText(),'OS Trixie','The Pi context is implied: no "Raspberry Pi" prefix');
   assert(!(await page.locator('.screen-title').innerText()).includes('MasterControl'),'Access name only in the window title');
-  assert((await page.locator('.screen-status').innerText()).includes('x11vnc'),'VNC server shown next to the status');
-  {const [state,server,dot]=await page.evaluate(()=>['.screen-status-text','.screen-server','.screen-status i'].map(q=>document.querySelector(q).getBoundingClientRect()));assert(server.top>=state.top+8,'Server name sits under the state');assert(Math.abs((dot.top+dot.bottom)/2-(state.top+state.bottom)/2)<=1.5,'Dot centred on both lines');}
+  assert.equal((await page.locator('.screen-status').innerText()).trim(),'Verbunden','Status shows only the state');
   {const mic=await page.locator('.mic-toggle').boundingBox(),trennen=await page.getByRole('button',{name:'Trennen'}).boundingBox();assert(mic.x<trennen.x,'Microphone sits left of Trennen');}
   assert.equal(await page.locator('.screen-host').evaluate(e=>getComputedStyle(e).color),'rgb(226, 87, 127)');
   const firstFit=await page.evaluate(()=>window.__relayMessages.find(m=>m.action==='screenFit'));

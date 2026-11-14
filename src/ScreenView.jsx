@@ -229,7 +229,7 @@ export function ScreenView(){
   onDrop={e=>{e.preventDefault();setDragging(false);const files=[...(e.dataTransfer?.files||[])];if(files.length)uploadFiles(files);}}>
   <header className="screen-toolbar">
    <span className="screen-title" title={'Integrierter Viewer (noVNC'+(meta.server?' · Pi sendet mit '+meta.server:'')+')'+(meta.version?' · Pi Relay '+meta.version:'')+' · Vollbild mit F11'}><span className="screen-mark" aria-hidden="true"><Monitor size={21}/><b>noVNC</b></span>{meta.os&&<small className="screen-os" title={meta.os}>{meta.os.replace(/^Raspberry Pi\s+/,'')}</small>}<strong className="screen-host">{meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm'}</strong></span>
-   <span className={'screen-status '+status} role="status"><i/><span className="screen-status-text">{labels[status]}{connected&&meta.server&&<small className="screen-server">{meta.server}</small>}</span></span>
+   <span className={'screen-status '+status} role="status"><i/><span className="screen-status-text">{labels[status]}</span></span>
    <span className={'screen-tools'+(tools.editing?' editing':'')} title={tools.editing?'Knopf auf einen anderen ziehen zum Tauschen · Esc oder Klick daneben beendet':undefined}>
     {tools.order.map(id=><span key={id} {...tools.bind(id)}>{{
      mic:<span className={'mic-button'+(mic.on?' on':'')+(mic.state==='waiting'?' waiting':'')}>

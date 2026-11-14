@@ -13,6 +13,7 @@ if(designMode)initial.vncServers={'192.168.1.50':{server:'x11vnc',package:'x11vn
 if(designMode&&new URLSearchParams(location.search).has('novnc-update'))initial.integrated={...initial.integrated,latest:'1.8.0',updateAvailable:true};
 if(designMode)initial.devices={'192.168.1.50':{model:'Raspberry Pi 5 Model B Rev 1.1',memoryBytes:16*2**30*0.985,storageBytes:125e9,storageKind:'USB'}};
 if(designMode&&new URLSearchParams(location.search).has('pi-offline')){initial.profiles=initial.profiles.map(p=>({...p,state:'disconnected'}));initial.reachability={'192.168.1.50':'offline'};}
+if(designMode&&new URLSearchParams(location.search).has('agents-off'))initial.agents=Object.fromEntries(Object.entries(initial.agents).map(([k,a])=>[k,{...a,state:'disconnected'}]));
 if(designMode&&new URLSearchParams(location.search).has('pi-waiting')){initial.profiles=initial.profiles.map((p,i)=>({...p,state:i===0?'waiting':'disconnected'}));initial.reachability={'192.168.1.50':'offline'};}
 const names = {codex:'Codex',claude:'Claude'};
 const stateText = {disconnected:'Getrennt',connecting:'Verbinden …',waiting:'Wartet auf Pi …',key:'Schlüssel bestätigen',connected:'Verbunden',ready:'SSH bereit',active:'Verbunden',busy:'Arbeitet',error:'Verbindung prüfen'};
@@ -58,6 +59,8 @@ function IconSlot({slot,custom,call,children}) {
 function ScreenIcon({size=22,external=false,server=''}) {
  return <span className={'screen-symbol'+(external?'':' integrated')+(server&&!external?' with-server':'')} aria-hidden="true"><Monitor size={size}/><span className="vnc-badge">{external?'VNC':server||'noVNC'}</span></span>;
 }
+// Pointer on the right: Claude (right) follows it clearly, Codex (left) barely - and the other way round.
+function sideWeight(id,x){const all=[...document.querySelectorAll('.agents-strip [data-companion]')].map(e=>e.getBoundingClientRect());if(all.length<2)return 1;const mid=(all[0].left+all[0].width/2+all[1].left+all[1].width/2)/2,s=Math.max(-1,Math.min(1,(x-mid)/160));const toward=id==='claude'?s:-s;return toward>=0?0.55+0.45*toward:0.55+0.43*toward;}
 function LookingAvatar({id,motion,className='',src}) {
  const portrait=useRef();
  useEffect(()=>{
@@ -67,7 +70,7 @@ function LookingAvatar({id,motion,className='',src}) {
   reset();if(!motion)return;
   const point=e=>{latest={x:e.clientX,y:e.clientY};dirty=true;};
   const react=()=>{
-   if(dirty&&latest&&!reduce.matches){const box=node.getBoundingClientRect(),dx=latest.x-box.left-box.width/2,dy=latest.y-box.top-box.height/2;node.style.setProperty('--look',Math.max(-13,Math.min(13,dx/23)).toFixed(1)+'deg');node.style.setProperty('--look-y',Math.max(-5,Math.min(5,-dy/55)).toFixed(1)+'deg');dirty=false;}
+   if(dirty&&latest&&!reduce.matches){const box=node.getBoundingClientRect(),dx=latest.x-box.left-box.width/2,dy=(latest.y-box.top-box.height/2)*sideWeight(id,latest.x);node.style.setProperty('--look',(Math.max(-13,Math.min(13,dx/23))*sideWeight(id,latest.x)).toFixed(1)+'deg');node.style.setProperty('--look-y',Math.max(-5,Math.min(5,-dy/55)).toFixed(1)+'deg');dirty=false;}
    timer=setTimeout(react,id==='codex'?260:390);
   };
   window.addEventListener('pointermove',point,{passive:true});reduce.addEventListener('change',reset);
@@ -79,7 +82,7 @@ function LookingAvatar({id,motion,className='',src}) {
 function Companion({id,agent,motion,onConfigure,onToggle,icon,call}) {
  const enabled=['ready','active','busy'].includes(agent.state);
  return <div className={'agent '+id+(enabled?' live':'')}>
-  <IconSlot slot={id} custom={icon} call={call}><button className="avatar-button" onClick={onConfigure} aria-label={names[id]+'-Zugang verwalten'}><LookingAvatar id={id} motion={motion} src={icon}/></button></IconSlot>
+  <IconSlot slot={id} custom={icon} call={call}><button className="avatar-button" onClick={onConfigure} aria-label={names[id]+'-Zugang verwalten'}><LookingAvatar id={id} motion={motion&&enabled} src={icon}/>{!enabled&&<span className="sleep-z" aria-hidden="true"><i>z</i><i>z</i><i>Z</i></span>}</button></IconSlot>
   <div className="agent-copy"><button className="agent-name" onClick={onConfigure}>{names[id]}</button>
    <button className="agent-status" disabled={['key','connecting'].includes(agent.state)} title={enabled?'Zugriff beenden':'Zugriff freigeben'} aria-label={names[id]+(enabled?' trennen':' verbinden')} onClick={onToggle}><i className={'agent-dot '+id+(enabled?' on':'')}/>{stateText[agent.state]||'Getrennt'}{enabled?<Pause size={12}/>:<Plug size={12}/>}</button>
   </div>

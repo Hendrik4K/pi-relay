@@ -182,8 +182,11 @@ const {chromium}=load('playwright');
   await sendIntegrated({});
   await page.locator('.integrated-card').filter({hasText:'noVNC 1.7.0'}).waitFor();
   assert((await page.locator('.integrated-card').innerText()).includes('Teil von Pi Relay 0.4.0'));
-  assert.equal(await page.locator('.integrated-card [role=status]').innerText(),'Auf dem neuesten Stand');
+  // The refresh icon beside the version checks; when current, the subtitle says so briefly and the version flashes green.
   await page.locator('.integrated-card').getByRole('button',{name:'Auf Updates prüfen'}).click();
+  await sendIntegrated({busy:true});await sendIntegrated({lastChecked:'2026-11-14T11:00:00Z'});
+  await page.locator('.integrated-card [role=status]').filter({hasText:'Auf dem neuesten Stand'}).waitFor({timeout:3000});
+  assert.equal(await page.locator('.integrated-card code.version-flash').count(),1,'Version flashes green when current');
   await sendIntegrated({latest:'1.8.0',updateAvailable:true});
   await page.locator('.integrated-card .new-version-number').filter({hasText:'1.8.0'}).waitFor();
   await page.getByRole('button',{name:'Update bauen'}).click();
