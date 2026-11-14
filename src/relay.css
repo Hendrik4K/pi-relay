@@ -225,3 +225,10 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .screen-symbol.with-server .vnc-badge{font-size:7.5px;letter-spacing:0;padding:2px 3px}
 .window-actions .screen-button:has(.with-server){width:60px}.screen-button .screen-symbol.with-server .vnc-badge{font-size:7.5px;padding:2px 3px;right:-14px}
 .brand .screen-symbol.with-server .vnc-badge{font-size:8px;right:-18px}
+
+/* Viewer and Pi-side VNC server are one connection: a dashed arc joins the two cards on the left,
+   grey while disconnected, red while the Pi is connected (like the access routes on home). */
+.screen-chain{position:relative}.screen-chain:before{content:'';position:absolute;left:-12px;top:30px;bottom:27px;width:13px;border:3px dashed #8e748a;border-right:0;border-radius:14px 0 0 14px;pointer-events:none;transition:border-color .35s ease}
+.screen-chain.live:before{border-color:#e54871}
+[data-motion=false] .screen-chain:before{transition:none}
+.screen-chain{padding-left:17px}.screen-chain:before{left:2px;width:12px}

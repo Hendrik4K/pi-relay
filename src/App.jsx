@@ -258,11 +258,13 @@ export function App() {
    {view==='screen'&&<><button className="primary-action screen-connect" disabled={!profile||(useExternal&&!viewerReady)} onClick={()=>call('connectScreen',{alias:profile.alias})}><Monitor size={20}/>{!useExternal&&screenOpen?'Bildschirm anzeigen':'Bildschirm öffnen'}</button>
     <div className="screen-access-row"><label htmlFor="screen-ssh-access">SSH-Zugang</label><select id="screen-ssh-access" value={profile?.alias||''} onChange={e=>setSelected(e.target.value)}>{data.profiles.map(p=><option key={p.alias} value={p.alias}>{p.alias}</option>)}</select><button className="icon-button screen-access-info" aria-label="SSH-Zugang erklären" aria-expanded={help} aria-controls="screen-access-help" onClick={showHelp}><Info size={19}/></button></div>
     {help&&<p id="screen-access-help" className="dialog-description screen-access-help" role="status">Nutzt die bestehende Verbindung von {profile?.alias||'MasterControl'}. Ist der Zugang getrennt, bestätigst du zuerst deinen Sicherheitsschlüssel.{useExternal?'':' Der integrierte Viewer braucht weder RealVNC noch ein Konto; verlangt der Pi eine VNC-Anmeldung, fragt das Fenster danach.'}</p>}
+    <div className={'screen-chain'+(connected?' live':'')}>
     {useExternal?<section className="viewer-card external-summary" aria-label="Externer Viewer">
      <div className="viewer-current"><div><strong>{externalName}</strong><span className={viewerReady?'viewer-installed':''}>{viewerReady?'aktiv · externe Anwendung':'noch nicht eingerichtet'}</span></div>{v.installed&&data.settings.managedViewer!==false&&<code>{v.installed}</code>}</div>
      <p className="muted-note">{!viewerReady?'Unter „Externer Viewer“ einrichten oder wieder auf den integrierten Viewer umschalten.':externalUpdate?<><span className="external-update">Neue Version {v.latest}</span> Unter „Externer Viewer“ aktualisieren.</>:'Bildschirm öffnen startet diesen Viewer über den bestehenden SSH-Zugang.'}</p>
     </section>:<IntegratedViewerPanel info={data.integrated} call={call}/>}
     <VncServerCard info={data.vncServers?.[profile?.hostname]} connected={connected} alias={profile?.alias} call={call}/>
+    </div>
    </>}
 
    {view==='external'&&<>
