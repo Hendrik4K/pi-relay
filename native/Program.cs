@@ -1,0 +1,260 @@
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
+using Microsoft.Web.WebView2.Wpf;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Win32;
+using Forms=System.Windows.Forms;
+
+namespace PiRelay;
+public static class Program {
+ [STAThread] public static void Main(string[] args){if(args.FirstOrDefault()=="--mcp"){Mcp.Run(args.ElementAtOrDefault(1)??"").GetAwaiter().GetResult();return;}if(args.FirstOrDefault() is "--viewer-check" or "--viewer-install" or "--viewer-status" or "--viewer-import-realvnc"){Console.OutputEncoding=new UTF8Encoding(false);try{var manager=new ViewerUpdates(ViewerUpdates.DefaultRoot,()=>{},_=>{});if(args[0]=="--viewer-check")Console.WriteLine(Json.Encode(manager.FetchLatest(args.ElementAtOrDefault(1)??"tigervnc").GetAwaiter().GetResult()));else{if(args[0]=="--viewer-install")manager.InstallTiger().GetAwaiter().GetResult();if(args[0]=="--viewer-import-realvnc")manager.ImportRealVnc(args.ElementAtOrDefault(1)??throw new ArgumentException("Viewer-Datei fehlt")).GetAwaiter().GetResult();Console.WriteLine(Json.Encode(manager.Snapshot()));}}catch(Exception e){Console.Error.WriteLine(e.Message);Environment.ExitCode=1;}return;}if(args.FirstOrDefault()=="--inspect"){var report=new {profiles=Discovery.Profiles().GetAwaiter().GetResult(),keys=Discovery.Keys([]).GetAwaiter().GetResult()};File.WriteAllText(args[1],Json.Encode(report));return;}
+  // Create the event before the mutex so a second launch during startup is kept
+  // until the first window can service it. Reopening never creates a new session.
+  using var showPanel=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\PiRelayDesktop.Show");
+  using var mutex=new Mutex(true,"Local\\PiRelayDesktop",out var first);
+  if(!first){showPanel.Set();return;}
+  var app=new System.Windows.Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
+  var window=new RelayWindow();
+  var activation=ThreadPool.RegisterWaitForSingleObject(showPanel,(_,_)=>{
+   if(!window.Dispatcher.HasShutdownStarted)window.Dispatcher.BeginInvoke(new Action(window.RevealPanel));
+  },null,Timeout.Infinite,false);
+  try{app.Run();}finally{activation.Unregister(null);}
+  GC.KeepAlive(window);
+ }
+}
+public sealed class RelayWindow : Window {
+ private readonly string dataFolder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PiRelay");
+ private readonly WebView2 web=new();
+ private readonly Forms.NotifyIcon tray=new();
+ private readonly Dictionary<string,AgentSession> agents=new();
+ private readonly Dictionary<string,SharedSession> connections=new();
+ private readonly Dictionary<string,TerminalWindow> terminals=new();
+ private readonly SingleInstances<ScreenWindow> screens=new();
+ private readonly ViewerUpdates viewerUpdates;
+ private readonly IntegratedViewer integratedViewer;
+ private readonly HostReachability reachability;
+ private readonly IconStore icons;
+ private int reachTicks;
+ private readonly List<EventRow> events=[];
+ private List<Profile> profiles=[];private List<PublicKey> keys=[];private SavedState saved=new();
+ private readonly System.Windows.Threading.DispatcherTimer timer=new(){Interval=TimeSpan.FromSeconds(2)};
+ private bool ready,exiting,refreshing,authenticating,revealRequested,collapsing,revealing;
+ private readonly System.Windows.Threading.DispatcherTimer revealTimer=new(){Interval=TimeSpan.FromMilliseconds(1200)};
+ // Fallback only: the renderer reports the real end of its slide (hideComplete/revealComplete).
+ private readonly System.Windows.Threading.DispatcherTimer collapseTimer=new(){Interval=TimeSpan.FromMilliseconds(1200)};
+ private readonly System.Windows.Threading.DispatcherTimer resizeTimer=new(){Interval=TimeSpan.FromMilliseconds(16)};
+ private readonly Stopwatch resizeClock=new();
+ private double panelTargetHeight=440,resizeFromHeight;
+ private int hideToken,hideClipFrames;
+ private double hideMaxOffset;
+ private bool hideClipsApplied=true;
+ private readonly CancellationTokenSource lifetime=new();
+ private Icon? trayIcon;
+ private readonly DateTimeOffset started=DateTimeOffset.Now;
+ private bool rounded;
+ private WindowOutlineResult? outline;
+ private object? surface;
+ public RelayWindow(){
+  Directory.CreateDirectory(dataFolder);try{saved=Json.Decode<SavedState>(File.ReadAllText(Path.Combine(dataFolder,"settings.json")))??new();}catch{}
+  foreach(var id in new[]{"codex","claude"}){saved.Agents.TryAdd(id,new());agents[id]=new(()=>Dispatcher.BeginInvoke(new Action(Push)));}
+  viewerUpdates=new(ViewerUpdates.DefaultRoot,()=>Dispatcher.BeginInvoke(new Action(Push)),message=>Dispatcher.BeginInvoke(new Action(()=>{Notice(message);tray.ShowBalloonTip(8000,"Pi Relay · Externer Viewer",message,Forms.ToolTipIcon.Info);})));
+  integratedViewer=new(AppContext.BaseDirectory,dataFolder,typeof(RelayWindow).Assembly.GetName().Version?.ToString(3)??"",IntegratedViewer.NpmTags(),()=>Dispatcher.BeginInvoke(new Action(Push)),message=>Dispatcher.BeginInvoke(new Action(()=>{Notice(message);tray.ShowBalloonTip(8000,"Pi Relay · Integrierter Viewer",message,Forms.ToolTipIcon.Info);})));
+  reachability=new(()=>Dispatcher.BeginInvoke(new Action(Push)));
+  icons=new(dataFolder);
+  Width=520;Height=panelTargetHeight;Title="Pi Relay";WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;ShowInTaskbar=false;Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,21,26));Content=web;
+  var appIcon=Path.Combine(AppContext.BaseDirectory,"PiRelay.ico");if(File.Exists(appIcon))Icon=BitmapFrame.Create(new Uri(appIcon));
+  SourceInitialized+=(_,_)=>ApplyOutline();SizeChanged+=(_,_)=>ApplyOutline();DpiChanged+=(_,_)=>ApplyOutline();
+  Closing+=(_,e)=>{if(!exiting){e.Cancel=true;CollapsePanel();}};
+  collapseTimer.Tick+=(_,_)=>CompleteHide();
+  revealTimer.Tick+=(_,_)=>FinishReveal();
+  resizeTimer.Tick+=(_,_)=>AdvancePanelSize();
+  var menu=new Forms.ContextMenuStrip();var versionText="Pi Relay "+integratedViewer.AppVersion+" · noVNC "+(integratedViewer.Installed==""?"?":integratedViewer.Installed);var versionItem=new Forms.ToolStripMenuItem(versionText){ForeColor=System.Drawing.SystemColors.GrayText,ToolTipText="Klicken: nach Updates suchen"};menu.Items.Add(versionItem);var checkingVersion=false;menu.ItemClicked+=(_,e)=>{if(e.ClickedItem==versionItem)checkingVersion=true;};menu.Closing+=(_,e)=>{if(checkingVersion&&e.CloseReason==Forms.ToolStripDropDownCloseReason.ItemClicked)e.Cancel=true;};versionItem.Click+=async(_,_)=>{versionItem.Enabled=false;versionItem.Text="Suche nach Updates …";await integratedViewer.Check();var staged=integratedViewer.Staged;if(integratedViewer.Error!=""){versionItem.Text="Prüfung nicht möglich (offline?)";}else if(staged!=null){versionItem.Text="Pi Relay "+staged.AppVersion+" bereit · unten aktivieren";versionItem.ForeColor=System.Drawing.Color.FromArgb(214,140,40);}else if(integratedViewer.HasUpdate&&!integratedViewer.IsSkipped){versionItem.Text="noVNC "+integratedViewer.Latest+" verfügbar · im Pi-Bildschirm";versionItem.ForeColor=System.Drawing.Color.FromArgb(214,140,40);}else{versionItem.Text=versionText+"  ✓ aktuell";versionItem.ForeColor=System.Drawing.Color.FromArgb(40,150,80);}versionItem.Enabled=true;await Task.Delay(2200);versionItem.Text=versionText;versionItem.ForeColor=System.Drawing.SystemColors.GrayText;checkingVersion=false;};menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("Pi Relay öffnen",null,(_,_)=>Dispatcher.Invoke(RevealPanel));menu.Items.Add("SSH-Zugänge neu einlesen",null,async(_,_)=>await Refresh());var activateItem=new Forms.ToolStripMenuItem("",null,(_,_)=>Dispatcher.Invoke(()=>Restart(true))){Visible=false};menu.Items.Add(activateItem);menu.Items.Add("Pi Relay neu starten",null,(_,_)=>Dispatcher.Invoke(()=>Restart(false)));menu.Opening+=(_,_)=>{var staged=integratedViewer.Staged;activateItem.Visible=staged!=null;if(staged!=null)activateItem.Text="Pi Relay "+staged.AppVersion+" aktivieren & neu starten";};menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("Beenden",null,(_,_)=>Dispatcher.Invoke(Quit));tray.ContextMenuStrip=menu;tray.Text="Pi Relay · getrennt";tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};UpdateIcon();tray.Visible=true;
+  timer.Tick+=(_,_)=>{foreach(var connection in connections.Values)connection.Refresh();viewerUpdates.Tick();integratedViewer.Tick();if(++reachTicks>=(IsVisible&&Opacity>0?5:30))CheckReachability();Push();};timer.Start();
+  // Tray startup is hidden, never iconically minimized. A taskbar-less WPF
+  // minimized window becomes a tiny desktop bar and can leave WebView2 at 0px.
+  if(saved.Settings.Minimized){ShowActivated=false;Opacity=0;PositionPanel();Show();}else ShowPanel();
+  _=Initialize();_=PipeServer();
+ }
+ private async Task Initialize(){try{
+  var environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(dataFolder,"WebView"));await web.EnsureCoreWebView2Async(environment);
+  web.DefaultBackgroundColor=Color.FromArgb(255,23,21,26);web.CoreWebView2.Settings.AreDevToolsEnabled=false;web.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;web.CoreWebView2.Settings.IsStatusBarEnabled=false;
+  web.CoreWebView2.SetVirtualHostNameToFolderMapping("pi-relay.local",Path.Combine(AppContext.BaseDirectory,"ui"),CoreWebView2HostResourceAccessKind.DenyCors);
+  // User pictures (Pi case, companions) live outside the app folder so updates keep them.
+  Directory.CreateDirectory(icons.Folder);web.CoreWebView2.SetVirtualHostNameToFolderMapping("pi-relay-icons.local",icons.Folder,CoreWebView2HostResourceAccessKind.DenyCors);
+  web.CoreWebView2.NavigationStarting+=(_,e)=>{if(!e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))e.Cancel=true;};
+  web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;
+  web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{await Handle(e.WebMessageAsJson);}catch(Exception ex){Notice(ex.Message);Log("Aktion fehlgeschlagen: "+ex.Message);}};
+  web.NavigationCompleted+=(_,e)=>{ready=e.IsSuccess;if(ready){Push();if(IsVisible&&Opacity>0)RevealSurface();}WriteStatus();};web.Source=new Uri("https://pi-relay.local/index.html");
+  await Refresh();if(saved.Settings.Minimized&&!revealRequested)CompleteHide();else ShowPanel();WriteStatus();
+ }catch(Exception e){System.Windows.MessageBox.Show("Pi Relay konnte nicht starten. Microsoft Edge WebView2 Runtime prüfen.\n"+e.Message,"Pi Relay");Quit();}}
+ private PanelPhase Phase=>revealing?PanelPhase.Revealing:collapsing?PanelPhase.Collapsing:IsVisible&&Opacity>0?PanelPhase.Visible:PanelPhase.Hidden;
+ // Reveals slide in from where the panel currently is (mid-collapse or fully hidden); without motion it just appears.
+ internal void RevealPanel(){
+  revealRequested=true;
+  if(revealing)return;
+  if(collapsing&&IsVisible&&ready)StartReveal("current");
+  else if(ready&&saved.Settings.Motion&&!(IsVisible&&Opacity>0))StartReveal("hidden");
+  else ShowPanel();
+  CheckReachability();
+ }
+ private void StartReveal(string from){
+  collapseTimer.Stop();resizeTimer.Stop();collapsing=false;revealing=true;hideToken++;
+  if(from=="hidden"){
+   WindowState=WindowState.Normal;PositionPanel();
+   // The window appears fully clipped; the renderer's slide frames open the region from the bottom.
+   var handle=new WindowInteropHelper(this).Handle;if(handle!=IntPtr.Zero)WindowOutline.ApplySlideClip(handle,Height+2);
+   ShowActivated=true;Opacity=1;Show();web.Visibility=Visibility.Visible;web.InvalidateMeasure();web.InvalidateArrange();UpdateLayout();
+   handle=new WindowInteropHelper(this).Handle;if(handle!=IntPtr.Zero)WindowOutline.ApplySlideClip(handle,ActualHeight+2);
+  }
+  Activate();
+  web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="reveal",token=hideToken,from}));
+  revealTimer.Stop();revealTimer.Start();Push();WriteStatus();
+ }
+ private void FinishReveal(){revealTimer.Stop();if(!revealing)return;revealing=false;ApplyOutline();Push();WriteStatus();}
+ // Every 10 s while the panel is open, once a minute otherwise: ICMP only, never an SSH login.
+ private void CheckReachability(){reachTicks=0;var hosts=profiles.Select(p=>p.Hostname).ToList();var live=profiles.Where(p=>connections.TryGetValue(p.Alias,out var c)&&c.IsReady).Select(p=>p.Hostname).ToHashSet(StringComparer.OrdinalIgnoreCase);_=reachability.Check(hosts,live.Contains);}
+ private void ApplyOutline(){var handle=new WindowInteropHelper(this).Handle;if(handle==IntPtr.Zero||revealing)return;outline=WindowOutline.Apply(handle);rounded=outline.Applied&&outline.CornersClipped;}
+ private void PositionPanel(){resizeTimer.Stop();var area=SystemParameters.WorkArea;Width=520;Height=panelTargetHeight;Left=area.Right-Width-14;Top=Math.Max(area.Top+10,area.Bottom-Height-14);}
+ private void ResizePanel(double height,bool motion){
+  if(!double.IsFinite(height))return;
+  var next=Math.Clamp(Math.Ceiling(height),300,Math.Max(300,Math.Min(720,SystemParameters.WorkArea.Height-28)));
+  if(Math.Abs(next-panelTargetHeight)<.5)return;
+  panelTargetHeight=next;resizeFromHeight=ActualHeight>0?ActualHeight:Height;resizeTimer.Stop();
+  if(!motion||!ready||!IsVisible||Opacity==0){PositionPanel();UpdateLayout();ApplyOutline();WriteStatus();return;}
+  resizeClock.Restart();resizeTimer.Start();
+ }
+ private void AdvancePanelSize(){
+  var progress=Math.Min(1,resizeClock.Elapsed.TotalMilliseconds/240);var eased=progress*progress*(3-2*progress);
+  var height=resizeFromHeight+(panelTargetHeight-resizeFromHeight)*eased;
+  Height=height;Top=Math.Max(SystemParameters.WorkArea.Top+10,SystemParameters.WorkArea.Bottom-height-14);
+  if(progress>=1){resizeTimer.Stop();UpdateLayout();ApplyOutline();WriteStatus();}
+ }
+ private void ShowPanel(){collapseTimer.Stop();collapsing=false;WindowState=WindowState.Normal;PositionPanel();ShowActivated=true;Opacity=1;Show();web.Visibility=Visibility.Visible;web.InvalidateMeasure();web.InvalidateArrange();UpdateLayout();ApplyOutline();Activate();if(ready)RevealSurface();WriteStatus();}
+ private void RevealSurface(){web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="reveal"}));Push();}
+ private void CollapsePanel(){if(!PanelMotion.MayCollapse(Phase))return;if(!ready||!saved.Settings.Motion){CompleteHide();return;}if(resizeTimer.IsEnabled){PositionPanel();UpdateLayout();ApplyOutline();}collapsing=true;hideToken++;hideClipFrames=0;hideMaxOffset=0;hideClipsApplied=true;web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="collapse",token=hideToken}));collapseTimer.Start();}
+ private void CompleteHide(){collapseTimer.Stop();resizeTimer.Stop();collapsing=false;if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="hidden"}));Hide();PositionPanel();ApplyOutline();Opacity=1;WriteStatus();}
+ private void WriteStatus(){File.WriteAllText(Path.Combine(dataFolder,"status.json"),Json.Encode(new{ready,pid=Environment.ProcessId,started,profiles=profiles.Count,keys=keys.Count,panelVisible=IsVisible,windowState=WindowState.ToString(),rounded,outline,panelTargetHeight,resizing=resizeTimer.IsEnabled,hideClipFrames,hideMaxOffset,hideClipsApplied,bottom=Top+ActualHeight,workAreaBottom=SystemParameters.WorkArea.Bottom,width=ActualWidth,height=ActualHeight,webWidth=web.ActualWidth,webHeight=web.ActualHeight,surface}));}
+ private object Snapshot()=>new {version=typeof(RelayWindow).Assembly.GetName().Version?.ToString(3),screens=screens.Keys,icons=icons.Snapshot(),devices=saved.Devices,reachability=reachability.Snapshot(),integrated=integratedViewer.Snapshot(connections.Values.Any(c=>c.IsReady)),profiles,keys,settings=saved.Settings,panel=new{visible=IsVisible&&Opacity>0,collapsing,revealing},viewer=viewerUpdates.Snapshot(),agents=agents.ToDictionary(x=>x.Key,x=>new{saved.Agents[x.Key].Alias,saved.Agents[x.Key].Root,saved.Agents[x.Key].AllowCommands,saved.Agents[x.Key].AllowWrite,state=x.Value.VisibleState}),events=events.TakeLast(80)};
+ private void Push(){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(Push));return;}foreach(var profile in profiles){var connection=connections.GetValueOrDefault(profile.Alias);profile.State=connection?.State=="ready"?"connected":connection?.State??"disconnected";}if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="state",data=Snapshot()}));UpdateIcon();}
+ private void Notice(string message){if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="notice",message}));}
+ private void Log(string message){events.Add(new(DateTime.Now.ToString("HH:mm:ss"),message));if(events.Count>200)events.RemoveAt(0);Push();}
+ private void Save(){var file=Path.Combine(dataFolder,"settings.json");var temp=file+".tmp";File.WriteAllText(temp,Json.Encode(saved));File.Move(temp,file,true);}
+ private async Task Refresh(){if(refreshing)return;refreshing=true;try{var found=await Discovery.Profiles();foreach(var p in found)p.State=profiles.FirstOrDefault(x=>x.Alias==p.Alias)?.State??"disconnected";profiles=found;keys=await Discovery.Keys(saved.AddedKeys);Push();CheckReachability();}finally{refreshing=false;}}
+ private async Task Handle(string json){using var document=JsonDocument.Parse(json);var r=document.RootElement;var action=r.GetProperty("action").GetString();switch(action){
+  case "getState":Push();if(ready&&IsVisible&&Opacity>0&&!collapsing)RevealSurface();break;
+  case "surfaceReady":surface=new{width=r.GetProperty("width").GetDouble(),height=r.GetProperty("height").GetDouble(),panelHeight=r.GetProperty("panelHeight").GetDouble(),collapsed=r.GetProperty("collapsed").GetBoolean()};WriteStatus();break;
+  case "resizePanel":ResizePanel(r.GetProperty("height").GetDouble(),saved.Settings.Motion&&r.GetProperty("motion").GetBoolean());break;
+  case "hide":CollapsePanel();break;
+  case "revealComplete":if(revealing&&r.GetProperty("token").GetInt32()==hideToken)FinishReveal();break;
+  case "clipPanel":if((collapsing||revealing)&&r.GetProperty("token").GetInt32()==hideToken){var offset=r.GetProperty("offset").GetDouble();if(double.IsFinite(offset)){hideClipFrames++;hideMaxOffset=Math.Max(hideMaxOffset,offset);hideClipsApplied&=WindowOutline.ApplySlideClip(new WindowInteropHelper(this).Handle,offset);}}break;
+  case "hideComplete":if(collapsing&&(!r.TryGetProperty("token",out var token)||token.GetInt32()==hideToken))CompleteHide();break;
+  case "drag":if(System.Windows.Input.Mouse.LeftButton==System.Windows.Input.MouseButtonState.Pressed)DragMove();break;
+  case "quit":Quit();break;
+  case "refresh":await Refresh();break;
+  case "connectProfile":await EnsureConnection(r.GetProperty("alias").GetString()??"");break;
+  case "connectTerminal":ConnectTerminal(r.GetProperty("alias").GetString()??"");break;
+  case "disconnectProfile":var alias=r.GetProperty("alias").GetString()??"";if(connections.TryGetValue(alias,out var connection))connection.Dispose();if(terminals.Remove(alias,out var terminal))terminal.Finish();Log(alias+": SSH-Verbindung getrennt");break;
+  case "pickVncViewer":var viewer=new Microsoft.Win32.OpenFileDialog{Title="VNC Viewer auswählen",Filter="VNC Viewer (*.exe)|*.exe"};if(viewer.ShowDialog(this)==true){saved.Settings.VncViewer=viewer.FileName;saved.Settings.ManagedViewer=false;Save();Push();}break;
+  case "checkViewerUpdate":await viewerUpdates.Check();break;
+  case "skipViewerUpdate":viewerUpdates.SkipVersion(r.GetProperty("provider").GetString()??"",r.GetProperty("version").GetString()??"");break;
+  case "restoreViewerUpdate":viewerUpdates.RestoreSkippedVersion();break;
+  case "openViewerDownload":Process.Start(new ProcessStartInfo("https://manage.realvnc.com/"){UseShellExecute=true});break;
+  case "installViewer":await viewerUpdates.InstallTiger();saved.Settings.ManagedViewer=true;Save();Push();break;
+  case "rollbackViewer":viewerUpdates.Rollback();break;
+  case "useManagedViewer":saved.Settings.ManagedViewer=true;Save();Push();break;
+  case "importRealVnc":var classic=new Microsoft.Win32.OpenFileDialog{Title="Vorhandenen portablen RealVNC Classic Viewer auswählen",Filter="RealVNC Classic (*.exe)|*.exe"};if(classic.ShowDialog(this)==true){await viewerUpdates.ImportRealVnc(classic.FileName);saved.Settings.ManagedViewer=true;Save();Push();}break;
+  // The switch in "Externer Viewer" decides what the main screen action opens.
+  case "connectScreen":if(saved.Settings.ExternalViewer)await OpenExternalScreen(r.GetProperty("alias").GetString()??"");else OpenScreen(r.GetProperty("alias").GetString()??"");break;
+  case "checkIntegratedViewer":await integratedViewer.Check();break;
+  case "skipIntegratedViewer":integratedViewer.Skip(r.GetProperty("version").GetString()??"");break;
+  case "restoreIntegratedViewer":integratedViewer.Restore();break;
+  case "buildIntegratedViewer":integratedViewer.StartBuild(r.GetProperty("version").GetString()??"");Log("Integrierter Viewer: Update-Build im PowerShell-Fenster gestartet");break;
+  // Activation restarts Pi Relay; active SSH sessions end only after the user confirmed exactly that.
+  case "activateIntegratedViewer":if(connections.Values.Any(c=>c.IsReady)&&!(r.TryGetProperty("confirm",out var confirmed)&&confirmed.GetBoolean()))throw new InvalidOperationException("SSH-Verbindungen sind aktiv. Bitte den Neustart ausdrücklich bestätigen.");integratedViewer.StartActivation(Environment.ProcessId);Log("Neue Pi-Relay-Version wird aktiviert; Pi Relay startet neu");Quit();break;
+  case "connectScreenExternal":await OpenExternalScreen(r.GetProperty("alias").GetString()??"");break;
+  case "saveSettings":var settings=r.GetProperty("settings");if(settings.TryGetProperty("minimized",out var min))saved.Settings.Minimized=min.GetBoolean();if(settings.TryGetProperty("motion",out var motion))saved.Settings.Motion=motion.GetBoolean();if(settings.TryGetProperty("externalViewer",out var external)){saved.Settings.ExternalViewer=external.GetBoolean();Log(external.GetBoolean()?"Pi-Bildschirm öffnet jetzt den externen Viewer":"Pi-Bildschirm öffnet jetzt den integrierten Viewer");}if(settings.TryGetProperty("autostart",out var start)){using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");if(start.GetBoolean())key.SetValue("PiRelay","\""+Environment.ProcessPath+"\"");else key.DeleteValue("PiRelay",false);saved.Settings.Autostart=start.GetBoolean();}Save();Push();break;
+  // Changing the Pi address rewrites HostName for all aliases on that host and carries its trusted keys.
+  case "setHost":{var from=r.GetProperty("from").GetString()??"";var to=(r.GetProperty("to").GetString()??"").Trim();
+   if(!profiles.Any(p=>p.Hostname==from))throw new InvalidOperationException("Unbekannte Pi-Adresse");
+   if(string.Equals(from,to,StringComparison.OrdinalIgnoreCase))break;
+   var (aliases,keys)=SshHostEdit.Apply(Discovery.SshFolder,from,to);await Refresh();
+   Log("Pi-Adresse "+from+" → "+to+" ("+aliases+" Zugänge, "+keys+" Schlüssel-Fingerabdrücke übernommen)");
+   Notice(connections.Values.Any(c=>c.IsReady)?"Neue Adresse gespeichert. Laufende Verbindungen bleiben bis zum Trennen auf der alten Adresse.":"Neue Adresse gespeichert. Beim nächsten Verbinden gilt "+to+".");
+   break;}
+  case "pickIcon":{var slot=r.GetProperty("slot").GetString()??"";var picker=new Microsoft.Win32.OpenFileDialog{Title="Eigenes Bild auswählen",Filter="Bilder (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg"};
+   if(picker.ShowDialog(this)==true){icons.Import(slot,picker.FileName);Log("Eigenes Bild für "+slot+" übernommen");Push();}
+   break;}
+  case "resetIcon":icons.Reset(r.GetProperty("slot").GetString()??"");Push();break;
+  case "openConfig":Open("notepad.exe",Path.Combine(Discovery.SshFolder,"config"));break;
+  case "openKeyFolder":Open("explorer.exe",Discovery.SshFolder);break;
+  case "copyKey":var path=r.GetProperty("path").GetString();if(!keys.Any(k=>k.Path==path))throw new InvalidOperationException("Unbekannter öffentlicher Schlüssel");System.Windows.Clipboard.SetText(File.ReadAllText(path!));Notice("Öffentlicher Schlüssel kopiert.");break;
+  case "addKey":var dialog=new Microsoft.Win32.OpenFileDialog{Filter="Öffentliche SSH-Schlüssel (*.pub)|*.pub",InitialDirectory=Discovery.SshFolder};if(dialog.ShowDialog(this)==true){saved.AddedKeys.Add(dialog.FileName);Save();await Refresh();}break;
+  case "saveAgent":var id=AgentId(r);var config=Json.Decode<AgentConfig>(r.GetProperty("config").GetRawText())??throw new InvalidOperationException("Ungültiges Profil");if(!profiles.Any(p=>p.Alias==config.Alias)||!config.Root.StartsWith('/'))throw new InvalidOperationException("Bekannten SSH-Zugang und absoluten Ordner wählen");agents[id].Dispose();saved.Agents[id]=config;Save();Log(id+": Zugang zugeordnet");break;
+  case "connectAgent":var agentId=AgentId(r);var agentConfig=saved.Agents[agentId];var shared=await EnsureConnection(agentConfig.Alias);await shared.Request("list",new{path="."},agentConfig);agents[agentId].Bind(shared,agentConfig);Log(agentId+": Zugriff freigegeben über "+agentConfig.Alias);break;
+  case "disconnectAgent":var stop=AgentId(r);agents[stop].Dispose();Log(stop+": Agent-Zugriff beendet; SSH bleibt verbunden");break;
+  case "copyMcp":var agent=AgentId(r);var exe=Environment.ProcessPath!;System.Windows.Clipboard.SetText(Json.Encode(new {command=exe,args=new[]{"--mcp",agent}}));Notice("MCP-Konfiguration kopiert. In deinem Agent-Client als lokalen STDIO-Server eintragen.");break;
+ }}
+ private static string AgentId(JsonElement r){var id=r.GetProperty("agent").GetString();return id is "codex" or "claude"?id:throw new InvalidOperationException("Unbekannter Agent");}
+ private static void Open(string exe,string argument){var info=new ProcessStartInfo(exe){UseShellExecute=true};info.ArgumentList.Add(argument);Process.Start(info);}
+ private async Task<SharedSession> EnsureConnection(string alias){
+  if(!profiles.Any(p=>p.Alias==alias))throw new InvalidOperationException("Bekannten SSH-Zugang wählen");
+  if(!connections.TryGetValue(alias,out var session)){session=new SharedSession(alias,()=>Dispatcher.BeginInvoke(new Action(Push)));connections[alias]=session;}
+  if(session.IsReady){var host=profiles.First(p=>p.Alias==alias).Hostname;if(!saved.Devices.ContainsKey(host))_=LoadDeviceFacts(alias,session);return session;}
+  if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
+  authenticating=true;
+  try{Notice("Verbinde mit "+alias+" … Den Sicherheitsschlüssel bestätigen, sobald Windows danach fragt.");await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);return session;}
+  finally{authenticating=false;Push();}
+ }
+ // Read-only board facts for the header; failures just leave the previous values.
+ private async Task LoadDeviceFacts(string alias,SharedSession session){
+  try{
+   var host=profiles.FirstOrDefault(p=>p.Alias==alias)?.Hostname;if(string.IsNullOrEmpty(host))return;
+   var info=await session.Request("device_info");
+   saved.Devices[host]=new DeviceFacts{Model=info.GetProperty("model").GetString()??"",MemoryBytes=info.GetProperty("memoryBytes").GetInt64(),StorageBytes=info.GetProperty("storageBytes").GetInt64(),StorageKind=info.GetProperty("storageKind").GetString()??""};
+   Save();Push();
+  }catch{}
+ }
+ private void ConnectTerminal(string alias){
+  if(!connections.TryGetValue(alias,out var session)||!session.IsReady)throw new InvalidOperationException("Zuerst auf den Zugang klicken und den Sicherheitsschlüssel bestätigen.");
+  if(!terminals.TryGetValue(alias,out var terminal)){terminal=new TerminalWindow(session);terminals[alias]=terminal;}
+  terminal.Reveal();
+ }
+ // The integrated viewer needs no external EXE. Opening it is the explicit user action that may
+ // start the alias's SSH login; a second click focuses the existing window of that alias.
+ private void OpenScreen(string alias){
+  if(!profiles.Any(p=>p.Alias==alias))throw new InvalidOperationException("Bekannten SSH-Zugang wählen");
+  var screen=screens.GetOrCreate(alias,()=>new ScreenWindow(alias,()=>EnsureConnection(alias)),out var created);
+  if(created){screen.Finished+=()=>{screens.Release(alias,screen);Log(alias+": Pi-Bildschirm geschlossen · SSH bleibt verbunden");};Log(alias+": Pi-Bildschirm im integrierten Viewer geöffnet");}
+  screen.Reveal();
+ }
+ private async Task OpenExternalScreen(string alias){
+  var viewer=saved.Settings.ManagedViewer?viewerUpdates.Store.VerifiedCurrentPath():saved.Settings.VncViewer;
+  if(string.IsNullOrEmpty(viewer)||!File.Exists(viewer)||!viewer.EndsWith(".exe",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Portablen Viewer zuerst einrichten oder einen vorhandenen Viewer auswählen.");
+  var session=await EnsureConnection(alias);
+  // Probe the existing Pi endpoint once. An unavailable desktop must not launch
+  // an apparently connected viewer or start a second SSH authentication.
+  var probe=await session.Request("tcp_open");await session.Request("tcp_close",new{channel=probe.GetProperty("channel").GetInt32()});
+  var port=await session.VncPort();Open(viewer,"127.0.0.1::"+port);
+  Log(alias+": Externer VNC Viewer über bestehenden SSH-Kanal geöffnet");
+ }
+ private async Task PipeServer(){while(!lifetime.IsCancellationRequested){try{var pipe=new NamedPipeServerStream(Mcp.PipeName,PipeDirection.InOut,10,PipeTransmissionMode.Byte,PipeOptions.Asynchronous|PipeOptions.CurrentUserOnly);await pipe.WaitForConnectionAsync(lifetime.Token);_=ProcessPipe(pipe);}catch(OperationCanceledException){break;}catch{await Task.Delay(1000);}}}
+ private async Task ProcessPipe(NamedPipeServerStream pipe){using(pipe){using var reader=new StreamReader(pipe,Encoding.UTF8,leaveOpen:true);using var writer=new StreamWriter(pipe,new UTF8Encoding(false),leaveOpen:true){AutoFlush=true};try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(50));var line=await reader.ReadLineAsync(timeout.Token)??throw new IOException("Leere Anfrage");if(line.Length>2097152)throw new IOException("Anfrage zu groß");using var doc=JsonDocument.Parse(line);var r=doc.RootElement;var id=AgentId(r);var tool=r.GetProperty("tool").GetString();var session=agents[id];session.MarkAttached();object? result;if(tool=="pi_status")result=new{agent=id,state=session.VisibleState,saved.Agents[id].Alias,saved.Agents[id].Root,saved.Agents[id].AllowCommands,saved.Agents[id].AllowWrite};else{var op=tool switch{"pi_list_files"=>"list","pi_read_file"=>"read","pi_write_file"=>"write","pi_run_command"=>"run",_=>throw new InvalidOperationException("Unbekanntes Werkzeug")};result=await session.Call(op,r.GetProperty("arguments"));}await writer.WriteLineAsync(Json.Encode(new{text=Json.Encode(result),isError=false}));}catch(Exception e){try{await writer.WriteLineAsync(Json.Encode(new{text=e.Message,isError=true}));}catch{}}}}
+ private void UpdateIcon(){try{var file=Path.Combine(AppContext.BaseDirectory,"ui","assets","raspberry.png");if(!File.Exists(file))return;using var bitmap=new Bitmap(32,32);using(var g=Graphics.FromImage(bitmap)){g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;using var berry=Image.FromFile(file);g.DrawImage(berry,1,0,23,31);using var blue=new SolidBrush(agents.TryGetValue("codex",out var a)&&a.VisibleState is "active" or "busy"?Color.FromArgb(66,133,255):Color.FromArgb(81,89,112));using var orange=new SolidBrush(agents.TryGetValue("claude",out var b)&&b.VisibleState is "active" or "busy"?Color.FromArgb(218,119,86):Color.FromArgb(107,84,79));g.FillEllipse(blue,25,8,6,6);g.FillEllipse(orange,25,19,6,6);}var handle=bitmap.GetHicon();var next=(System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone();DestroyIcon(handle);tray.Icon=next;trayIcon?.Dispose();trayIcon=next;tray.Text="Pi Relay · Codex: "+agents.GetValueOrDefault("codex")?.VisibleState+" · Claude: "+agents.GetValueOrDefault("claude")?.VisibleState;}catch{}}
+ // Tray restart, optionally activating a tested staged build. Ending live SSH sessions needs a confirmation.
+ private void Restart(bool activate){
+  if(connections.Values.Any(c=>c.IsReady)&&System.Windows.MessageBox.Show("Pi Relay startet neu. Dabei enden die SSH-Verbindung, Terminal, Bildschirm und Agentenfreigaben. Danach bestätigst du den Sicherheitsschlüssel neu.","Pi Relay neu starten",MessageBoxButton.OKCancel,MessageBoxImage.Question)!=MessageBoxResult.OK)return;
+  try{if(activate)integratedViewer.StartActivation(Environment.ProcessId);else Relaunch.Start(Environment.ProcessId,Environment.ProcessPath!);}
+  catch(Exception e){Notice(e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);return;}
+  Log(activate?"Neue Version wird aktiviert; Pi Relay startet neu":"Pi Relay startet neu");Quit();
+ }
+ private void Quit(){exiting=true;lifetime.Cancel();timer.Stop();collapseTimer.Stop();resizeTimer.Stop();foreach(var terminal in terminals.Values)terminal.Finish();foreach(var screen in screens.Values)screen.Finish(true);foreach(var a in agents.Values)a.Dispose();foreach(var session in connections.Values)session.Dispose();tray.Visible=false;tray.Dispose();trayIcon?.Dispose();System.Windows.Application.Current.Shutdown();}
+ [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
+}

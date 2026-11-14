@@ -1,0 +1,25 @@
+node_modules/
+dist/
+release/
+native/bin/
+native/obj/
+native/test-data/
+native/__pycache__/
+qa/host-state.json
+release-next/
+backups/
+tools/
+artifacts/
+qa/
+tests/**/bin/
+tests/**/obj/
+tests/**/test-data/
+*.pub
+*.pem
+*.key
+.env
+.env.*
+
+# Internal notes stay in the private project
+AGENTS.md
+design-qa.md

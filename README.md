@@ -1,0 +1,68 @@
+# Pi Relay
+
+**Windows-Tray-App für den Raspberry Pi: Terminal, Pi-Bildschirm (VNC) und KI-Agenten über eine einzige SSH-Verbindung.**
+*A Windows tray app for your Raspberry Pi: terminal, Pi desktop (VNC) and AI agents over a single SSH connection. English below.*
+
+<p align="center"><img src="docs/screenshots/pi-bildschirm.png" width="420" alt="Pi Relay Übersicht"></p>
+
+## Was es kann
+
+- **Ein SSH-Kanal pro Zugang.** Terminal, Bildschirm und Agenten teilen sich dieselbe OpenSSH-Verbindung. Hardware-Sicherheitsschlüssel (FIDO2/`sk-`) funktionieren, die Bestätigung erfolgt einmal.
+- **Integrierter Pi-Bildschirm.** noVNC läuft lokal im eigenen Fenster und tunnelt RFB durch die bestehende SSH-Verbindung zu `127.0.0.1:5900` auf dem Pi. Es gibt keinen offenen VNC-Port, keinen lokalen Listener, kein Konto und keinen externen Viewer. Das Fenster passt sich weich dem Seitenverhältnis an, Dateien lassen sich per Drag & Drop direkt auf den Pi-Desktop ziehen, die Zwischenablage wird übertragen. RealVNC/TigerVNC bleiben als ausdrücklich gewählter Rückfall möglich.
+- **Echtes Terminal** (xterm.js mit Linux-PTY) im eigenen Fenster.
+- **Codex und Claude als Agenten auf dem Pi.** Pi Relay stellt einen lokalen MCP-Server (`PiRelay.exe --mcp codex|claude`) bereit. Pro Agent legst du einen Projektordner fest; Schreiben und Befehle sind standardmäßig aus und werden einzeln freigegeben. Die Statusanzeige unterscheidet „SSH bereit“, „Verbunden“ und „Arbeitet“.
+- **Kleinigkeiten:** Ping-Erreichbarkeit (rein ICMP, ohne Anmeldung), Pi-Adresse direkt ändern (passt `~/.ssh/config` und `known_hosts` mit Sicherung an), Board-Infos (Modell, RAM, Speicher), eigene Bilder über „Icon ändern“, Update-Prüfung für den integrierten Viewer.
+
+<p align="center"><img src="docs/screenshots/terminal.png" width="300" alt="Terminal"> <img src="docs/screenshots/einstellungen.png" width="300" alt="Einstellungen"> <img src="docs/screenshots/traymenue.png" width="220" alt="Tray-Menü"></p>
+
+## Voraussetzungen
+
+- Windows 10/11 x64 mit WebView2 Runtime und dem eingebauten OpenSSH-Client
+- Raspberry Pi mit SSH und Python 3. Für den Bildschirm wird **WayVNC nur lokal** betrieben:
+
+```ini
+# /etc/wayvnc/config
+use_relative_paths=true
+address=127.0.0.1
+enable_auth=false
+```
+
+`enable_auth=false` ist nur deshalb vertretbar, weil WayVNC ausschließlich auf `127.0.0.1` lauscht und damit nur über SSH erreichbar ist. Nicht auf `0.0.0.0` stellen.
+
+- SSH-Zugänge als Aliase in `~/.ssh/config` (z. B. `Host MasterControl` mit `HostName 192.168.1.50`). Pi Relay liest nur öffentliche Schlüssel, kopiert keine privaten Schlüssel und erzeugt keine neuen.
+
+## Bauen
+
+Benötigt das .NET 10 SDK, Node.js 22+ und für den Installer Inno Setup 6.
+
+```bash
+npm ci
+powershell -ExecutionPolicy Bypass -File build-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-checks.ps1
+powershell -ExecutionPolicy Bypass -File build-installer.ps1
+```
+
+## Sicherheit in Kürze
+
+- Kein Netzwerkdienst auf dem Pi: Der Worker (`native/remote_worker.py`) läuft nur für die Dauer der SSH-Sitzung.
+- Der VNC-Tunnel kennt genau ein festes Ziel (`127.0.0.1:5900`), keine frei wählbare Adresse.
+- Agenten-Dateizugriffe sind auf den freigegebenen Ordner begrenzt. Freigegebene **Shell-Befehle** haben die Rechte des Linux-Benutzers; für echte Trennung einen eigenen eingeschränkten Pi-Benutzer verwenden.
+- Der MCP-Server ist eine lokale Named Pipe für den aktuellen Windows-Benutzer.
+
+## Hinweis zu Bildern und Marken
+
+Der Quellcode steht unter der [MIT-Lizenz](LICENSE). Die Figuren, das Gehäusebild und die Icons gehören **nicht** dazu. Raspberry Pi, Claude/Anthropic, Codex/OpenAI, RealVNC und weitere Namen sind Marken ihrer Inhaber. Pi Relay ist ein privates Hobbyprojekt und mit keinem dieser Unternehmen verbunden. Details und Fremdsoftware (noVNC, MPL-2.0) siehe [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+---
+
+## English
+
+Pi Relay is a Windows tray app that keeps **one OpenSSH connection per access alias** to a Raspberry Pi and shares it between:
+
+- an **integrated VNC viewer** (noVNC, bundled locally) that tunnels RFB through that SSH connection to WayVNC on `127.0.0.1:5900`. No open VNC port, no account, no external viewer needed. Smooth aspect-ratio fit, drag-and-drop file upload to the Pi desktop, clipboard sync. RealVNC/TigerVNC remain an optional, explicit fallback.
+- a real **terminal** (xterm.js + Linux PTY),
+- **Codex and Claude** as agents on the Pi via a local MCP server (`PiRelay.exe --mcp codex|claude`), scoped to a project folder, with write and command access off by default.
+
+Hardware security keys (FIDO2 `sk-` keys) work; you confirm once per connection. Requirements, WayVNC config and build steps are listed in the German section above (commands are the same). The UI is in German.
+
+**License:** source code under [MIT](LICENSE). The pictures and icons are not covered by it; all trademarks belong to their owners and Pi Relay is not affiliated with Raspberry Pi Ltd, Anthropic, OpenAI or RealVNC. Third-party components: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
