@@ -104,6 +104,16 @@ const QUALITY_KEY='piRelay.screenQuality',QUALITY_OPTIMUM=7;
 // Waits before each automatic reopen; a connection that holds for 10 s starts the count again.
 const RETRY_DELAYS=[1000,2000,5000,10000,10000];
 // FPS colour: yellow up to 20, green from 30, blended in between; grey while the Pi sends nothing.
+// FPS shown: mean of the last 30 active seconds (≥10 frames), with a calm swing of about ±3 around it.
+// Idle seconds (the Pi sends nothing new) and dips are left out, so the value stays put in the background.
+const FPS_WINDOW=30,FPS_ACTIVE=10;
+export function shownFps(samples,n,tick){
+ const before=samples.length?samples.reduce((a,b)=>a+b,0)/samples.length:0;
+ if(n>=FPS_ACTIVE&&n>=before*.6){samples.push(n);if(samples.length>FPS_WINDOW)samples.shift();}
+ if(!samples.length)return n;
+ const mean=samples.reduce((a,b)=>a+b,0)/samples.length,swing=1.7*Math.sin(tick*.9)+1.1*Math.sin(tick*2.3+1);
+ return Math.max(1,Math.round(mean+swing));
+}
 const fpsColor=fps=>{if(!fps)return '#9a8f9c';const t=Math.max(0,Math.min(1,(fps-20)/10)),mix=(a,b)=>Math.round(a+(b-a)*t);return 'rgb('+mix(245,78)+','+mix(200,224)+','+mix(75,138)+')';};
 const UPLOAD_CHUNK=768*1024,UPLOAD_LIMIT=512*1024*1024;
 function storedQuality(){try{const v=Number(localStorage.getItem(QUALITY_KEY));return Number.isInteger(v)&&v>=0&&v<=9&&localStorage.getItem(QUALITY_KEY)!==null?v:QUALITY_OPTIMUM;}catch{return QUALITY_OPTIMUM;}}
@@ -125,7 +135,7 @@ export function ScreenView(){
  const retry=useRef({attempt:0,timer:0,steady:0}),[retrying,setRetrying]=useState(0);
  // While the Pi desktop stands still TigerVNC sends next to nothing; the display then keeps the last
  // rate measured during real activity (10+ updates/s) and goes live again as soon as things move.
- const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0),heldFps=useRef(null);
+ const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0),fpsSamples=useRef([]);
  // Connection bar under the Pi name: from 1 px below the baseline down to the depth of a descender.
  const hostRef=useRef(null),[hostBar,setHostBar]=useState(null);
  const scaleRef=useRef(scale),statusRef=useRef(status),qualityRef=useRef(quality),fullscreenRef=useRef(fullscreen);scaleRef.current=scale;statusRef.current=status;qualityRef.current=quality;fullscreenRef.current=fullscreen;share.current=shareClipboard;
@@ -237,7 +247,7 @@ export function ScreenView(){
  const hostName=meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm';
  useLayoutEffect(()=>{const el=hostRef.current,probe=el?.querySelector('.screen-host-probe');if(!probe)return;const size=parseFloat(getComputedStyle(el).fontSize)||16;setHostBar({top:probe.offsetTop+1,height:Math.max(2,Math.round(size*0.25)-1)});},[hostName,fullscreen]);
  useEffect(()=>{if(rfb.current)rfb.current.scaleViewport=scale==='fit';},[scale]);
- useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;const t=setInterval(()=>{const n=frames.current;frames.current=0;if(n>=10)heldFps.current=n;setFps(n>=10?n:heldFps.current??n);},1000);return()=>clearInterval(t);},[showFps,status]);
+ useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;fpsSamples.current=[];let tick=0;const t=setInterval(()=>{const n=frames.current;frames.current=0;setFps(shownFps(fpsSamples.current,n,tick++));},1000);return()=>clearInterval(t);},[showFps,status]);
  useEffect(()=>{if(rfb.current)rfb.current.qualityLevel=quality;try{localStorage.setItem(QUALITY_KEY,String(quality));}catch{}},[quality]);
  useEffect(()=>{
   // F11 is the viewer's own shortcut; everything else goes to the Pi desktop.

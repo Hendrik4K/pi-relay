@@ -54,6 +54,10 @@ public sealed class RelayWindow : Window {
  // Fallback only: the renderer reports the real end of its slide (hideComplete/revealComplete).
  private readonly System.Windows.Threading.DispatcherTimer collapseTimer=new(){Interval=TimeSpan.FromMilliseconds(1200)};
  private readonly System.Windows.Threading.DispatcherTimer resizeTimer=new(){Interval=TimeSpan.FromMilliseconds(16)};
+ // The open panel folds itself away after 20 s without the mouse over it or typing in it.
+ private static readonly TimeSpan AutoCollapseAfter=TimeSpan.FromSeconds(20);
+ private readonly System.Windows.Threading.DispatcherTimer idleTimer=new(){Interval=TimeSpan.FromSeconds(1)};
+ private DateTime lastPanelActivity=DateTime.UtcNow;
  private readonly Stopwatch resizeClock=new();
  private double panelTargetHeight=440,resizeFromHeight;
  private int hideToken,hideClipFrames;
@@ -79,7 +83,8 @@ public sealed class RelayWindow : Window {
   collapseTimer.Tick+=(_,_)=>CompleteHide();
   revealTimer.Tick+=(_,_)=>FinishReveal();
   resizeTimer.Tick+=(_,_)=>AdvancePanelSize();
-  var menu=new Forms.ContextMenuStrip();var versionText="Pi Relay "+integratedViewer.AppVersion+" · noVNC "+(integratedViewer.Installed==""?"?":integratedViewer.Installed);var versionItem=new Forms.ToolStripMenuItem(versionText){ForeColor=System.Drawing.SystemColors.GrayText,ToolTipText="Klicken: nach Updates suchen"};menu.Items.Add(versionItem);var checkingVersion=false;menu.ItemClicked+=(_,e)=>{checkingVersion=e.ClickedItem==versionItem;};menu.Closing+=(_,e)=>{if(checkingVersion&&e.CloseReason==Forms.ToolStripDropDownCloseReason.ItemClicked)e.Cancel=true;};versionItem.Click+=async(_,_)=>{try{versionItem.Enabled=false;versionItem.Text="Suche nach Updates …";try{await integratedViewer.Check();}catch(Exception ex){Log("Update-Prüfung fehlgeschlagen: "+ex.Message);}var staged=integratedViewer.Staged;if(integratedViewer.Error!=""){versionItem.Text="Prüfung nicht möglich (offline?)";}else if(staged!=null){versionItem.Text="Pi Relay "+staged.AppVersion+" bereit · unten aktivieren";versionItem.ForeColor=System.Drawing.Color.FromArgb(214,140,40);}else if(integratedViewer.HasUpdate&&!integratedViewer.IsSkipped){versionItem.Text="noVNC "+integratedViewer.Latest+" verfügbar · im Pi-Bildschirm";versionItem.ForeColor=System.Drawing.Color.FromArgb(214,140,40);}else{versionItem.Text=versionText+"  ✓ aktuell";versionItem.ForeColor=System.Drawing.Color.FromArgb(40,150,80);}versionItem.Enabled=true;await Task.Delay(2200);versionItem.Text=versionText;versionItem.ForeColor=System.Drawing.SystemColors.GrayText;}finally{versionItem.Enabled=true;checkingVersion=false;}};menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("Pi Relay öffnen",null,(_,_)=>Dispatcher.BeginInvoke(RevealPanel));menu.Items.Add("SSH-Zugänge neu einlesen",null,async(_,_)=>await Refresh());var activateItem=new Forms.ToolStripMenuItem("",null,(_,_)=>Dispatcher.BeginInvoke(()=>Restart(true))){Visible=false};menu.Items.Add(activateItem);menu.Items.Add("Pi Relay neu starten",null,(_,_)=>Dispatcher.BeginInvoke(()=>Restart(false)));menu.Opening+=(_,_)=>{var staged=integratedViewer.Staged;activateItem.Visible=staged!=null;if(staged!=null)activateItem.Text="Pi Relay "+staged.AppVersion+" aktivieren && neu starten";};menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("Beenden",null,(_,_)=>Dispatcher.BeginInvoke(Quit));tray.ContextMenuStrip=menu;tray.Text="Pi Relay · getrennt";tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};UpdateIcon();tray.Visible=true;
+  idleTimer.Tick+=(_,_)=>CheckIdleCollapse();idleTimer.Start();
+  BuildTrayMenu();tray.Text="Pi Relay · getrennt";tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};UpdateIcon();tray.Visible=true;StartSpinIfRestarted();
   timer.Tick+=(_,_)=>{foreach(var connection in connections.Values)connection.Refresh();viewerUpdates.Tick();integratedViewer.Tick();if(++reachTicks>=(IsVisible&&Opacity>0?5:30))CheckReachability();Push();};timer.Start();
   // Tray startup is hidden, never iconically minimized. A taskbar-less WPF
   // minimized window becomes a tiny desktop bar and can leave WebView2 at 0px.
@@ -121,6 +126,13 @@ public sealed class RelayWindow : Window {
   web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new{type="reveal",token=hideToken,from}));
   revealTimer.Stop();revealTimer.Start();Push();WriteStatus();
  }
+ private void CheckIdleCollapse(){
+  if(Phase!=PanelPhase.Visible||IsMouseOverPanel()){lastPanelActivity=DateTime.UtcNow;return;}
+  // Never while a dialog of the panel (file picker, message box) or an SSH confirmation is open.
+  if(System.Windows.Interop.ComponentDispatcher.IsThreadModal||authenticating||waitingFor.Count>0){lastPanelActivity=DateTime.UtcNow;return;}
+  if(DateTime.UtcNow-lastPanelActivity>=AutoCollapseAfter){lastPanelActivity=DateTime.UtcNow;CollapsePanel();}
+ }
+ private bool IsMouseOverPanel(){var handle=new WindowInteropHelper(this).Handle;if(handle==IntPtr.Zero||!GetWindowRect(handle,out var rect))return false;var cursor=Forms.Cursor.Position;return cursor.X>=rect.Left&&cursor.X<rect.Right&&cursor.Y>=rect.Top&&cursor.Y<rect.Bottom;}
  private void FinishReveal(){revealTimer.Stop();if(!revealing)return;revealing=false;ApplyOutline();Push();WriteStatus();}
  // Every 10 s while the panel is open, once a minute otherwise: ICMP only, never an SSH login.
  private void CheckReachability(){reachTicks=0;var hosts=profiles.Select(p=>p.Hostname).ToList();var live=profiles.Where(p=>connections.TryGetValue(p.Alias,out var c)&&c.IsReady).Select(p=>p.Hostname).ToHashSet(StringComparer.OrdinalIgnoreCase);_=reachability.Check(hosts,live.Contains);}
@@ -156,6 +168,7 @@ public sealed class RelayWindow : Window {
   case "surfaceReady":surface=new{width=r.GetProperty("width").GetDouble(),height=r.GetProperty("height").GetDouble(),panelHeight=r.GetProperty("panelHeight").GetDouble(),collapsed=r.GetProperty("collapsed").GetBoolean()};WriteStatus();break;
   case "resizePanel":ResizePanel(r.GetProperty("height").GetDouble(),saved.Settings.Motion&&r.GetProperty("motion").GetBoolean());break;
   case "hide":CollapsePanel();break;
+  case "panelActivity":lastPanelActivity=DateTime.UtcNow;break;
   case "revealComplete":if(revealing&&r.GetProperty("token").GetInt32()==hideToken)FinishReveal();break;
   case "clipPanel":if((collapsing||revealing)&&r.GetProperty("token").GetInt32()==hideToken){var offset=r.GetProperty("offset").GetDouble();if(double.IsFinite(offset)){hideClipFrames++;hideMaxOffset=Math.Max(hideMaxOffset,offset);hideClipsApplied&=WindowOutline.ApplySlideClip(new WindowInteropHelper(this).Handle,offset);}}break;
   case "hideComplete":if(collapsing&&(!r.TryGetProperty("token",out var token)||token.GetInt32()==hideToken))CompleteHide();break;
@@ -272,14 +285,96 @@ public sealed class RelayWindow : Window {
  }
  private async Task PipeServer(){while(!lifetime.IsCancellationRequested){try{var pipe=new NamedPipeServerStream(Mcp.PipeName,PipeDirection.InOut,10,PipeTransmissionMode.Byte,PipeOptions.Asynchronous|PipeOptions.CurrentUserOnly);if(!Mcp.OwnedByCurrentUser(pipe)){pipe.Dispose();Log("MCP-Schnittstelle gesperrt: Eine fremde Pipe mit gleichem Namen existiert. Agenten bleiben getrennt.");await Task.Delay(30000,lifetime.Token);continue;}await pipe.WaitForConnectionAsync(lifetime.Token);_=ProcessPipe(pipe);}catch(OperationCanceledException){break;}catch{await Task.Delay(1000);}}}
  private async Task ProcessPipe(NamedPipeServerStream pipe){using(pipe){using var reader=new StreamReader(pipe,Encoding.UTF8,leaveOpen:true);using var writer=new StreamWriter(pipe,new UTF8Encoding(false),leaveOpen:true){AutoFlush=true};try{using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(50));var line=await reader.ReadLineAsync(timeout.Token)??throw new IOException("Leere Anfrage");if(line.Length>2097152)throw new IOException("Anfrage zu groß");using var doc=JsonDocument.Parse(line);var r=doc.RootElement;var id=AgentId(r);var tool=r.GetProperty("tool").GetString();var session=agents[id];session.MarkAttached();object? result;if(tool=="pi_status")result=new{agent=id,state=session.VisibleState,saved.Agents[id].Alias,saved.Agents[id].Root,saved.Agents[id].AllowCommands,saved.Agents[id].AllowWrite};else{var op=tool switch{"pi_list_files"=>"list","pi_read_file"=>"read","pi_write_file"=>"write","pi_run_command"=>"run",_=>throw new InvalidOperationException("Unbekanntes Werkzeug")};result=await session.Call(op,r.GetProperty("arguments"));}await writer.WriteLineAsync(Json.Encode(new{text=Json.Encode(result),isError=false}));}catch(Exception e){try{await writer.WriteLineAsync(Json.Encode(new{text=e.Message,isError=true}));}catch{}}}}
- private void UpdateIcon(){try{var file=Path.Combine(AppContext.BaseDirectory,"ui","assets","raspberry.png");if(!File.Exists(file))return;using var bitmap=new Bitmap(32,32);using(var g=Graphics.FromImage(bitmap)){g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;using var berry=Image.FromFile(file);g.DrawImage(berry,1,0,23,31);using var blue=new SolidBrush(agents.TryGetValue("codex",out var a)&&a.VisibleState is "active" or "busy"?Color.FromArgb(66,133,255):Color.FromArgb(81,89,112));using var orange=new SolidBrush(agents.TryGetValue("claude",out var b)&&b.VisibleState is "active" or "busy"?Color.FromArgb(218,119,86):Color.FromArgb(107,84,79));g.FillEllipse(blue,25,8,6,6);g.FillEllipse(orange,25,19,6,6);}var handle=bitmap.GetHicon();var next=(System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone();DestroyIcon(handle);tray.Icon=next;trayIcon?.Dispose();trayIcon=next;tray.Text="Pi Relay · Codex: "+agents.GetValueOrDefault("codex")?.VisibleState+" · Claude: "+agents.GetValueOrDefault("claude")?.VisibleState;}catch{}}
+ // Restart spin of the tray berry; the old process leaves a marker, the new one plays it once.
+ private string SpinMarker=>Path.Combine(dataFolder,"spin-on-start");
+ private readonly System.Windows.Threading.DispatcherTimer spinTimer=new(){Interval=TimeSpan.FromMilliseconds(20)};
+ private readonly Stopwatch spinClock=new();
+ private double? spinAngle;
+ private Bitmap? berryImage;
+ private void StartSpinIfRestarted(){
+  try{if(!File.Exists(SpinMarker))return;var fresh=DateTime.UtcNow-File.GetLastWriteTimeUtc(SpinMarker)<TimeSpan.FromMinutes(2);File.Delete(SpinMarker);if(!fresh)return;}catch{return;}
+  StartSpin();
+ }
+ private bool spinWired;
+ // Also used by the update check in the tray menu; a spin already running just starts over.
+ private void StartSpin(){
+  if(!saved.Settings.Motion)return;
+  if(!spinWired){spinWired=true;spinTimer.Tick+=(_,_)=>{spinAngle=TraySpin.Angle(spinClock.Elapsed.TotalSeconds);if(spinAngle==null)spinTimer.Stop();UpdateIcon();};}
+  spinClock.Restart();spinTimer.Start();
+ }
+ // Tray menu in the app's look. The version line checks for updates on click and offers them one after another.
+ private void BuildTrayMenu(){
+  var menu=TrayMenu.Create();
+  var versionText="Pi Relay "+integratedViewer.AppVersion+" · noVNC "+(integratedViewer.Installed==""?"?":integratedViewer.Installed);
+  var version=new VersionItem{Font=menu.Font,ToolTipText="Klicken: nach Updates suchen"};version.Set(versionText,TrayMenu.Muted,false);menu.Items.Add(version);
+  var keepOpen=false;var checking=false;
+  menu.ItemClicked+=(_,e)=>keepOpen=e.ClickedItem==version;
+  menu.Closing+=(_,e)=>{if(keepOpen&&e.CloseReason==Forms.ToolStripDropDownCloseReason.ItemClicked)e.Cancel=true;keepOpen=false;};
+  version.Click+=async(_,_)=>{
+   if(checking)return;checking=true;
+   try{
+    version.SlideTo("Suche nach Updates …",TrayMenu.Text);
+    await Task.Delay(170);StartSpin();
+    var clock=Stopwatch.StartNew();
+    try{await integratedViewer.Check();}catch(Exception ex){Log("Update-Prüfung fehlgeschlagen: "+ex.Message);}
+    var rest=TimeSpan.FromMilliseconds(1300)-clock.Elapsed;if(rest>TimeSpan.Zero)await Task.Delay(rest);
+    await ShowVersionState(version,versionText,true);
+   }finally{checking=false;}
+  };
+  version.UpdateClicked+=()=>Dispatcher.BeginInvoke(()=>StartUpdate(version));
+  menu.Items.Add(TrayMenu.Spacer());
+  menu.Items.Add(TrayMenu.Item("Pi Relay öffnen",(_,_)=>Dispatcher.BeginInvoke(RevealPanel)));
+  menu.Items.Add(TrayMenu.Item("SSH-Zugänge neu einlesen",async(_,_)=>await Refresh()));
+  var activateItem=TrayMenu.Item("",(_,_)=>Dispatcher.BeginInvoke(()=>Restart(true)));activateItem.ForeColor=TrayMenu.Amber;activateItem.Visible=false;menu.Items.Add(activateItem);
+  menu.Items.Add(TrayMenu.Item("Pi Relay neu starten",(_,_)=>Dispatcher.BeginInvoke(()=>Restart(false))));
+  menu.Items.Add(TrayMenu.Spacer());
+  menu.Items.Add(TrayMenu.Exit("Beenden",(_,_)=>Dispatcher.BeginInvoke(Quit)));
+  menu.Opening+=(_,_)=>{var staged=integratedViewer.Staged;activateItem.Visible=staged!=null;if(staged!=null)activateItem.Text="Pi Relay "+staged.AppVersion+" aktivieren & neu starten";if(!checking)_=ShowVersionState(version,versionText,false);};
+  tray.ContextMenuStrip=menu;
+ }
+ // Up to date: the version line glows green once. Otherwise it names what is waiting and shows the refresh button.
+ private async Task ShowVersionState(VersionItem version,string versionText,bool animate){
+  var staged=integratedViewer.Staged;
+  (string text,Color tint,bool update) state=
+   staged!=null?("Pi Relay "+staged.AppVersion+" bereit zum Aktivieren",TrayMenu.Amber,true):
+   integratedViewer.Building?("Update wird gebaut …",TrayMenu.Amber,false):
+   integratedViewer.HasUpdate&&!integratedViewer.IsSkipped?("noVNC "+integratedViewer.Latest+" verfügbar",TrayMenu.Amber,integratedViewer.ProjectRoot!=null):
+   animate&&integratedViewer.Error!=""?("Prüfung nicht möglich (offline?)",TrayMenu.Muted,false):
+   (versionText,TrayMenu.Muted,false);
+  if(!animate){version.Set(state.text,state.tint,state.update);return;}
+  version.SlideTo(state.text,state.tint,state.update);
+  if(state.text==versionText){await Task.Delay(VersionItem.SlideTime);version.Glow();}
+  else if(!state.update&&integratedViewer.Error!=""){await Task.Delay(2400);version.SlideTo(versionText,TrayMenu.Muted);}
+ }
+ // One step at a time: a tested build waiting → activate (restart); a newer noVNC → build and test it first.
+ private void StartUpdate(VersionItem version){
+  try{
+   if(integratedViewer.Staged!=null){Restart(true);return;}
+   if(integratedViewer.HasUpdate&&!integratedViewer.Building){integratedViewer.StartBuild(integratedViewer.Latest);Log("Integrierter Viewer: Update-Build im PowerShell-Fenster gestartet");version.SlideTo("Update wird gebaut …",TrayMenu.Amber);}
+  }catch(Exception e){Notice(e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);}
+ }
+ // Loaded once into memory, so the ui folder stays free for an update swap.
+ private Bitmap? Berry(){if(berryImage!=null)return berryImage;var file=Path.Combine(AppContext.BaseDirectory,"ui","assets","raspberry.png");if(!File.Exists(file))return null;using var stream=new MemoryStream(File.ReadAllBytes(file));using var loaded=Image.FromStream(stream);return berryImage=new Bitmap(loaded);}
+ // Turning around the vertical axis: the berry narrows to a sliver, shows its darker mirrored back, and widens again.
+ private void DrawBerry(Graphics g,Bitmap berry){
+  if(spinAngle is not double angle){g.DrawImage(berry,1,0,23,31);return;}
+  var c=Math.Cos(angle*Math.PI/180);var width=(float)Math.Max(1.5,23*Math.Abs(c));var left=12.5f-width/2;
+  g.InterpolationMode=System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+  if(c>=0){g.DrawImage(berry,left,0,width,31);return;}
+  using var dim=new System.Drawing.Imaging.ImageAttributes();dim.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix(new[]{new[]{.62f,0,0,0,0},new[]{0,.62f,0,0,0},new[]{0,0,.62f,0,0},new[]{0,0,0,1f,0},new[]{0,0,0,0,1f}}));
+  g.DrawImage(berry,new[]{new PointF(left+width,0),new PointF(left,0),new PointF(left+width,31)},new RectangleF(0,0,berry.Width,berry.Height),GraphicsUnit.Pixel,dim);
+ }
+ private void UpdateIcon(){try{var berry=Berry();if(berry==null)return;using var bitmap=new Bitmap(32,32);using(var g=Graphics.FromImage(bitmap)){g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;DrawBerry(g,berry);using var blue=new SolidBrush(agents.TryGetValue("codex",out var a)&&a.VisibleState is "active" or "busy"?Color.FromArgb(66,133,255):Color.FromArgb(81,89,112));using var orange=new SolidBrush(agents.TryGetValue("claude",out var b)&&b.VisibleState is "active" or "busy"?Color.FromArgb(218,119,86):Color.FromArgb(107,84,79));g.FillEllipse(blue,25,8,6,6);g.FillEllipse(orange,25,19,6,6);}var handle=bitmap.GetHicon();var next=(System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone();DestroyIcon(handle);tray.Icon=next;trayIcon?.Dispose();trayIcon=next;tray.Text="Pi Relay · Codex: "+agents.GetValueOrDefault("codex")?.VisibleState+" · Claude: "+agents.GetValueOrDefault("claude")?.VisibleState;}catch{}}
  // Tray restart, optionally activating a tested staged build. Ending live SSH sessions needs a confirmation.
  private void Restart(bool activate){
   Log(activate?"Aktivierung der neuen Version angefordert":"Neustart angefordert");
   try{if(activate)integratedViewer.StartActivation(Environment.ProcessId);else Relaunch.Start(Environment.ProcessId,Environment.ProcessPath!);}
   catch(Exception e){Notice(e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);return;}
+  try{File.WriteAllText(SpinMarker,"");}catch{}
   Log(activate?"Neue Version wird aktiviert; Pi Relay startet neu":"Pi Relay startet neu");Quit();
  }
- private void Quit(){exiting=true;lifetime.Cancel();timer.Stop();collapseTimer.Stop();resizeTimer.Stop();foreach(var terminal in terminals.Values)terminal.Finish();foreach(var screen in screens.Values)screen.Finish(true);foreach(var a in agents.Values)a.Dispose();foreach(var session in connections.Values)session.Dispose();tray.Visible=false;tray.Dispose();trayIcon?.Dispose();System.Windows.Application.Current.Shutdown();}
+ private void Quit(){exiting=true;lifetime.Cancel();timer.Stop();spinTimer.Stop();idleTimer.Stop();collapseTimer.Stop();resizeTimer.Stop();foreach(var terminal in terminals.Values)terminal.Finish();foreach(var screen in screens.Values)screen.Finish(true);foreach(var a in agents.Values)a.Dispose();foreach(var session in connections.Values)session.Dispose();tray.Visible=false;tray.Dispose();trayIcon?.Dispose();System.Windows.Application.Current.Shutdown();}
  [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
+ [StructLayout(LayoutKind.Sequential)] private struct NativeRect{public int Left,Top,Right,Bottom;}
+ [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window,out NativeRect rect);
 }

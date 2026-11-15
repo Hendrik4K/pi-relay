@@ -88,6 +88,9 @@ try{
  // Tray clicks: ignored while sliding in, reverse while sliding out; the in-panel collapse only when fully shown.
  Check(PanelMotion.OnTrayClick(PanelPhase.Revealing)==PanelAction.Ignore&&PanelMotion.OnTrayClick(PanelPhase.Collapsing)==PanelAction.Reverse&&PanelMotion.OnTrayClick(PanelPhase.Visible)==PanelAction.Collapse&&PanelMotion.OnTrayClick(PanelPhase.Hidden)==PanelAction.Reveal,"Tray click follows the slide phase");
  Check(PanelMotion.MayCollapse(PanelPhase.Visible)&&!PanelMotion.MayCollapse(PanelPhase.Revealing)&&!PanelMotion.MayCollapse(PanelPhase.Collapsing),"Collapse only from a fully shown panel");
+ // Restart spin: 8 coin turns, never faster than 5.5 turns/s, ends at rest.
+ {double turned=0,last=0,maxStep=0;for(var t=.02;t<TraySpin.Duration;t+=.02){var a=TraySpin.Angle(t)!.Value;var step=((a-last)%360+360)%360;if(step>180)step-=360;maxStep=Math.Max(maxStep,Math.Abs(step));turned+=step;last=a;}
+  Check(TraySpin.Angle(0)==0&&TraySpin.Angle(TraySpin.Duration)==null&&TraySpin.Angle(-1)==null&&TraySpin.Duration is >4 and <5.2&&Math.Abs(turned-360*TraySpin.Turns)<45&&maxStep<=5.5*360*.02+1,"Tray spin: 8 turns, speed limit, ends at rest");}
  // Reachability: ping only, two misses before "offline", a live SSH session always counts as online.
  var answers=new Queue<bool>(new[]{true,false,false,true});var changes=0;
  var reach=new HostReachability(()=>changes++,_=>Task.FromResult(answers.Dequeue()));

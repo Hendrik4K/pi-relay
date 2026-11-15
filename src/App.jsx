@@ -21,6 +21,9 @@ const names = {codex:'Codex',claude:'Claude'};
 const stateText = {disconnected:'Getrennt',connecting:'Verbinden …',waiting:'Wartet auf Pi …',key:'Schlüssel bestätigen',connected:'Verbunden',ready:'SSH bereit',active:'Verbunden',busy:'Arbeitet',error:'Verbindung prüfen'};
 
 function request(action,data={}) { if(native) window.chrome.webview.postMessage({action,...data}); }
+// Typing in the panel keeps it open even with the mouse elsewhere (it folds away after 20 s idle).
+let lastActivity=0;
+if(native&&!/[?&](terminal|screen)=/.test(location.search))addEventListener('keydown',()=>{const now=Date.now();if(now-lastActivity>1000){lastActivity=now;request('panelActivity');}},true);
 // The native panel slides as one piece: the renderer moves the front frame by frame and reports each
 // offset, so Windows clips the real window to it. Reversing starts from the current offset.
 // Collapse starts fast and settles softly (quartic ease-out); reveal eases out a little less.

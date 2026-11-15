@@ -7,6 +7,7 @@
   <Compile Include="../../native/SshHostEdit.cs" Link="SshHostEdit.cs"/>
   <Compile Include="../../native/HostReachability.cs" Link="HostReachability.cs"/>
   <Compile Include="../../native/PanelMotion.cs" Link="PanelMotion.cs"/>
+  <Compile Include="../../native/TraySpin.cs" Link="TraySpin.cs"/>
   <Compile Include="../../native/IconStore.cs" Link="IconStore.cs"/>
  </ItemGroup>
 </Project>
