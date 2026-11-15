@@ -1,6 +1,4 @@
-<a href="README.en.md"><img src="docs/screenshots/flag-gb.svg" align="right" height="22" alt="English" title="English"></a><a href="README.md"><img src="docs/screenshots/flag-de.svg" align="right" height="22" alt="Deutsch" title="Deutsch"></a>
-
-# Pi Relay
+# Pi Relay <a href="README.en.md"><img align="right" src="docs/screenshots/flag-gb.svg" height="22" alt="English" title="English"></a><a href="README.md"><img align="right" src="docs/screenshots/flag-de.svg" height="22" alt="Deutsch" title="Deutsch"></a><img align="right" src="docs/screenshots/sprache.svg" height="22" alt="Language" title="Choose language">
 
 **Built for headless access to your Raspberry Pi: control it from your Windows desktop in a small viewer window, with no open VNC ports and updates built in.**
 
@@ -19,23 +17,39 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 <details>
 <summary><b>💡 What it does</b></summary>
 
-- **One line for everything.** Terminal, Pi screen and the AI helpers all share the same SSH connection. You sign in once, security keys (YubiKey & co.) included, and that's it. No confirming ten times.
-- **The Pi desktop in its own window.** You see and use the Pi like a second screen, smooth and sharp. Everything runs through SSH: no VNC port open on your network, no account, no extra app. The window fits itself, you drag files in (they land on the Pi desktop), and copy & paste works between Windows and the Pi.
-- **A real terminal** for everything you'd rather type.
-- **Codex and Claude can work on the Pi**, but only where you let them: you give each AI one project folder. Reading is fine; changing files and running commands stay off until you switch them on one by one. The status tells you whether they're ready, connected or busy.
-- **Your Windows mic on the Pi:** the "Mikro" switch in the screen window lets the Pi hear your Windows microphone over the same line. The Pi needs a small receiver program for that (`~/.local/bin/windows-mikro-empfang`).
-- **Little extras:** see whether the Pi is reachable at all (no login), change the Pi's address right in the app, board facts (model, RAM, storage), your own pictures for the Pi, Codex and Claude (hold the mouse on one for a moment, then "PNG ändern") and an update check with one click on the version line in the tray menu.
+Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can drop HDMI cables completely and still get smart, smooth access to your Pi.
+
+- **The Pi screen in its own window.** There's a dedicated window where you see and use the Pi like a second screen. We went with VNC (with noVNC built in) because it's solid and proven. Everything runs through your SSH connection, no VNC port is open on your network. You update the viewer yourself with one click, so you never get stuck with old security holes.
+- **Screen and terminal with one click.** In the Pi Relay management panel there are two buttons next to your access: the screen icon opens the Pi desktop, the terminal button right next to it (`>_`) opens a real terminal where you type on your Pi over SSH.
+- **Your AI agents right on the Pi.** Codex (ChatGPT) or Claude get easy SSH access so you can work with AI agents on the Pi from Windows. You give each agent one project folder. Reading is fine; changing files and running commands stay off until you switch them on one by one.
+- **Keys under control.** You manage where your SSH keys live right in the app; YubiKey & co. work.
+- **Your own pictures.** Hover over the Pi, Codex or Claude and stay for about 5 seconds: a ring forms, then you click "PNG ändern" and pick your own picture.
+- **Low-key and plug & play.** Pi Relay waits quietly in the taskbar and is there with one click.
+
+Why this exists: I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
 
 </details>
 
 <details>
 <summary><b>🧰 Requirements</b></summary>
 
-**On Windows:** Windows 10 or 11 (64-bit). WebView2 and the SSH client already come with current Windows versions.
+Pi Relay runs with the following software. Here's what you need where. Everything required ships by default, but you can also use a different VNC server or viewer.
 
-**On the Pi:** SSH and Python 3 (both ship with Raspberry Pi OS) and your SSH accesses as entries in `~/.ssh/config`, e.g. `Host MeinPi` with `HostName 192.168.1.50`. Pi Relay only reads your public keys. It never touches private keys and never creates new ones.
+**On Windows:** Windows 10 or 11 (64-bit). WebView2 and the SSH client already come with current Windows versions. Pi Relay brings its own viewer (noVNC).
 
-**For the Pi screen** the Pi needs a program that shares its desktop (a VNC server). Important: it may listen **on the Pi itself only** (`127.0.0.1:5900`), not on your whole network. Pi Relay then fetches the picture safely through the SSH line. Which program you pick doesn't matter. Three proven options:
+**On the Pi:** SSH and Python 3 (both ship with Raspberry Pi OS).
+
+**The connection to the Pi** is set up once in your SSH configuration (`~/.ssh/config` on Windows), for example:
+
+```
+Host MeinPi
+  HostName 192.168.1.50
+  User pi
+```
+
+Pi Relay shows every such entry as an access. It only reads your public keys; it never touches private keys and never creates new ones.
+
+**For the Pi screen** the Pi needs a program that shares its desktop (a VNC server). Important: it may listen **on the Pi itself only** (`127.0.0.1:5900`), not on your whole network. Pi Relay then fetches the picture safely through the SSH line. Three proven options:
 
 **TigerVNC** (our pick, around 45 instead of 5 frames per second on a Pi 5 compared to x11vnc). Package `tigervnc-scraping-server`, in your user's autostart:
 
@@ -60,7 +74,7 @@ enable_auth=false
 **In short:** `-localhost` or `address=127.0.0.1` means "reachable on the Pi itself only". That's a must here, because no VNC password is set. In the screen window, quality 7 is the sweet spot (the green dot on the slider).
 
 <details>
-<summary>For the curious: password, firewall rule and what happens after a Pi restart</summary>
+<summary>🆘 <b>Emergency tips:</b> password, firewall rule and what happens after a Pi restart</summary>
 
 Nobody on the network can reach the VNC server, only Windows through your SSH connection. Programs or other users **on the Pi itself** could, though. If you're the only one using the Pi, that's fine. Otherwise set a VNC password (WayVNC `enable_auth=true`, x11vnc `-rfbauth`): Pi Relay asks for it in the window and keeps it only while the app runs. Also, Pi Relay only connects when port 5900 belongs to your own user or root, so a foreign program jumping the queue gets neither keyboard nor clipboard.
 
@@ -84,11 +98,14 @@ A second access named `Ersatzzugang` (e.g. with a spare key) is shown as a colla
 </details>
 
 <details>
-<summary><b>🛠️ Build it yourself</b></summary>
+<summary><b>🚀 Quickstart</b></summary>
 
-Just want to get going? Grab the ready-made installer under **Releases** on the right. Building is only for tinkerers.
+1. Download the installer under **Releases** (on the right) and run it. It installs for you only, no admin rights. If Windows SmartScreen says "Windows protected your PC": **More info → Run anyway** (the installer isn't code-signed).
+2. Add your Pi to the SSH configuration as shown under **Requirements**.
+3. Click the raspberry in the bottom-right taskbar, click your access and confirm your security key.
+4. Screen icon for the Pi desktop, `>_` for the terminal. Done.
 
-You need the .NET 10 SDK, Node.js 22 or newer and, for the installer, Inno Setup 6. Then, in the project folder:
+**Build it yourself (for tinkerers):** you need the .NET 10 SDK, Node.js 22 or newer and, for the installer, Inno Setup 6. Then, in the project folder:
 
 ```bash
 npm ci
@@ -96,8 +113,6 @@ powershell -ExecutionPolicy Bypass -File build-windows.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-checks.ps1
 powershell -ExecutionPolicy Bypass -File build-installer.ps1
 ```
-
-That builds the app, runs all checks and packs the installer at the end.
 
 </details>
 
@@ -120,6 +135,8 @@ That builds the app, runs all checks and packs the installer at the end.
 
 <details>
 <summary><b>🖼️ Pictures and trademarks</b></summary>
+
+The two companions for Codex and Claude in this edition are look-alikes drawn for it. If you prefer other pictures, swap them for your own in the app via "PNG ändern".
 
 The source code is under the [MIT license](LICENSE). The characters, the case picture and the icons are **not** covered by it. Raspberry Pi, Claude/Anthropic, Codex/OpenAI, RealVNC and other names are trademarks of their owners. Pi Relay is a private hobby project and not affiliated with any of these companies. Details and third-party software (noVNC, MPL-2.0): see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
