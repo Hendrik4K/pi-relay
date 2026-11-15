@@ -6,6 +6,8 @@ Pi Relay holt den Pi-Bildschirm flüssig und gestochen scharf in ein Windows-Fen
 
 *Running your Raspberry Pi headless and still want its desktop on Windows? No monitor, no HDMI cable, no VNC port open on your network: Pi Relay shows the Pi screen fast and sharp in a local window over your own SSH connection. Closed it? It waits in the taskbar, one click on the small pop-up menu brings it back. Terminal and AI agents included. English below.*
 
+<p align="center"><img src="docs/screenshots/beispiel-desktop.jpg" width="820" alt="Beispielbild: Pi Relay öffnet sich als Pop-up über dem Taskleistensymbol"></p>
+
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
 ## Was es kann
