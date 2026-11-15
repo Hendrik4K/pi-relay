@@ -1,14 +1,12 @@
-<p align="center"><img src="public/assets/raspberry.png" width="92" alt="Pi Relay"></p>
-
 # Pi Relay <a href="README.en.md"><img align="right" src="docs/screenshots/flag-gb.svg" height="22" alt="English" title="English"></a><a href="README.md"><img align="right" src="docs/screenshots/flag-de.svg" height="22" alt="Deutsch" title="Deutsch"></a><img align="right" src="docs/screenshots/sprache.svg" height="22" alt="Sprache" title="Sprache wählen">
 
-<p align="center"><a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a> <a href="https://github.com/Hendrik4K/pi-relay/releases/latest"><img src="https://img.shields.io/github/v/release/Hendrik4K/pi-relay?label=Release&color=c51a4a" alt="Release"></a> <a href="https://github.com/Hendrik4K/pi-relay/releases"><img src="https://img.shields.io/github/downloads/Hendrik4K/pi-relay/total?label=Downloads&color=6f42c1" alt="Downloads"></a> <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2ea44f" alt="License MIT"></a> <img src="https://img.shields.io/badge/VNC--Port-nicht%20offen-555" alt="VNC--Port"></p>
+<p align="center"><a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a> <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <img src="https://img.shields.io/badge/VNC--Port-nicht%20offen-555" alt="VNC--Port"></p>
 
 **Gebaut für den Headless-Zugriff auf deinen Raspberry Pi: Du steuerst ihn vom Windows-Desktop aus, in einem kleinen Viewer-Fenster, ohne offene VNC-Ports und mit eingebauten Updates.**
 
 Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben (gern auch deinen YubiKey, der Pi steht auf Hardware), einmal bestätigen. Ab dann klopft Pi Relay bei Bedarf per SSH-Tunnel an und du arbeitest auf dem Pi, als stünde er neben dir. Mit eingebauter FPS-Anzeige, falls du deinem Pi beim Schwitzen zusehen willst.
 
-<p align="center"><img src="docs/screenshots/taskleiste.png" width="420" alt="Pi Relay im Windows-Infobereich"></p>
+<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay im Windows-Infobereich"></p>
 
 <p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Pi-Bildschirm schließen und über das Himbeer-Symbol in der Taskleiste wieder öffnen"></p>
 
@@ -59,6 +57,7 @@ Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. Du
 - **Deine KI-Agenten direkt auf dem Pi.** Codex (ChatGPT) oder Claude bekommen einen leichten SSH-Zugang, damit du von Windows aus mit KI-Agenten auf dem Pi arbeiten kannst. Du gibst pro Agent einen Projektordner frei. Lesen geht, Dateien ändern und Befehle ausführen bleiben aus, bis du sie einzeln anknipst.
 - **Schlüssel im Griff.** Den Speicherort deiner SSH-Schlüssel verwaltest du direkt in der App, YubiKey & Co. funktionieren.
 - **Eigene Bilder.** Fahr mit der Maus über den Pi, Codex oder Claude und bleib etwa 5 Sekunden dort: Es bildet sich ein Kreis, dann klickst du auf „PNG ändern“ und setzt dein eigenes Bild ein.
+- **Deutsch oder Englisch.** In den Einstellungen sitzt links vom X ein Sprachschalter mit Flagge: ein Klick, und die ganze Oberfläche wechselt die Sprache. Auf einem englischen Windows startet Pi Relay gleich auf Englisch.
 - **Alles dezent und Plug & Play.** Pi Relay wartet unauffällig unten in der Taskleiste und ist mit einem Klick da.
 
 <ins>Warum es das gibt:</ins> Ich hatte genau dieses Problem und keine fertige Lösung dafür gefunden. Also habe ich sie gebaut und stelle sie jetzt allen zur Verfügung.

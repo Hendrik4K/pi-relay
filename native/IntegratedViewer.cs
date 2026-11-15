@@ -75,7 +75,7 @@ public sealed partial class IntegratedViewer {
  public async Task Check(){
   if(!await gate.WaitAsync(0))return;Busy=true;Error="";changed();
   try{cache.LastAttempt=DateTimeOffset.UtcNow;cache.Latest=ParseLatest(await fetchTags());cache.LastChecked=DateTimeOffset.UtcNow;Save();
-   if(HasUpdate&&!IsSkipped&&cache.NotifiedVersion!=cache.Latest){cache.NotifiedVersion=cache.Latest;Save();notify("noVNC "+cache.Latest+" ist erschienen. Im Pi-Bildschirm-Menü kannst du ein geprüftes Pi-Relay-Update bauen lassen.");}}
+   if(HasUpdate&&!IsSkipped&&cache.NotifiedVersion!=cache.Latest){cache.NotifiedVersion=cache.Latest;Save();notify(Lang.L("noVNC "+cache.Latest+" ist erschienen. Im Pi-Bildschirm-Menü kannst du ein geprüftes Pi-Relay-Update bauen lassen.","noVNC "+cache.Latest+" is out. In the Pi screen menu you can have a tested Pi Relay update built."));}}
   catch(Exception e){Error="Prüfung nicht möglich: "+e.Message;try{Save();}catch{}}
   finally{Busy=false;changed();gate.Release();}
  }

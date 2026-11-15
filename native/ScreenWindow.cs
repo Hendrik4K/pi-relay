@@ -30,7 +30,7 @@ public sealed class ScreenWindow : Window {
   this.settings=settings??(()=>new UiSettings());
   bridge=new(alias,ensure,Post,PostData);
   mic=new(ensure,Post);
-  Title=alias+" · Pi-Bildschirm · Pi Relay";var area=SystemParameters.WorkArea;Width=Math.Min(1280,area.Width*.9);Height=Math.Min(840,area.Height*.9);MinWidth=480;MinHeight=320;WindowStartupLocation=WindowStartupLocation.CenterScreen;
+  Title=WindowTitle();var area=SystemParameters.WorkArea;Width=Math.Min(1280,area.Width*.9);Height=Math.Min(840,area.Height*.9);MinWidth=480;MinHeight=320;WindowStartupLocation=WindowStartupLocation.CenterScreen;
   Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,21,26));Content=web;
   var icon=Path.Combine(AppContext.BaseDirectory,"PiRelay.ico");if(File.Exists(icon))Icon=BitmapFrame.Create(new Uri(icon));
   // noVNC releases pressed keys on blur; the explicit message also covers Alt+Tab while a key is held.
@@ -42,7 +42,8 @@ public sealed class ScreenWindow : Window {
   _=Initialize();
  }
  // Viewer options from the tray settings, applied to an open window right away.
- public void SettingsChanged()=>Post(new{type="screenSettings",showFps=settings().ShowFps});
+ public void SettingsChanged(){Title=WindowTitle();Post(new{type="screenSettings",showFps=settings().ShowFps,language=settings().Language});}
+ private string WindowTitle()=>Alias+(settings().Language=="en"?" · Pi screen · Pi Relay":" · Pi-Bildschirm · Pi Relay");
  // Chromium slows timers and painting of background or covered windows; the Pi desktop should keep its full
  // frame rate while the viewer is open, even behind other windows. All Pi Relay windows share one WebView2
  // folder, so they must use the same options.
@@ -77,11 +78,11 @@ public sealed class ScreenWindow : Window {
   web.CoreWebView2.PermissionRequested+=(_,e)=>{e.SavesInProfile=false;e.State=e.PermissionKind==CoreWebView2PermissionKind.Microphone&&e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase)?CoreWebView2PermissionState.Allow:CoreWebView2PermissionState.Deny;};
   web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{await Handle(e.WebMessageAsJson);}catch(Exception ex){Post(new{type="screenNotice",message=ex.Message});}};
   web.NavigationCompleted+=(_,e)=>{ready=e.IsSuccess;};
-  web.Source=new Uri("https://pi-relay.local/index.html?screen="+Uri.EscapeDataString(Alias));
- }catch(Exception e){System.Windows.MessageBox.Show(e.Message,"Pi Relay Bildschirm");Close();}}
+  web.Source=new Uri("https://pi-relay.local/index.html?screen="+Uri.EscapeDataString(Alias)+"&lang="+(this.settings().Language=="en"?"en":"de"));
+ }catch(Exception e){System.Windows.MessageBox.Show(e.Message,Lang.L("Pi Relay Bildschirm","Pi Relay screen"));Close();}}
  private async Task Handle(string json){using var document=JsonDocument.Parse(json);var r=document.RootElement;switch(r.GetProperty("action").GetString()){
   // A renderer reload restarts the RFB handshake on a fresh tunnel, but only the first load connects by itself.
-  case "screenReady":ready=true;var first=!initialized;initialized=true;if(!first)bridge.Close("Ansicht neu geladen. Erneut verbinden.");Post(new{type="screenInit",alias=Alias,version=typeof(ScreenWindow).Assembly.GetName().Version?.ToString(3),autoConnect=first,fullscreen,showFps=settings().ShowFps});break;
+  case "screenReady":ready=true;var first=!initialized;initialized=true;if(!first)bridge.Close("Ansicht neu geladen. Erneut verbinden.");Post(new{type="screenInit",alias=Alias,version=typeof(ScreenWindow).Assembly.GetName().Version?.ToString(3),autoConnect=first,fullscreen,showFps=settings().ShowFps,language=settings().Language});break;
   case "screenOpen":await bridge.Open(r.TryGetProperty("auto",out var auto)&&auto.GetBoolean());break;
   case "screenSend":var data=Convert.FromBase64String(r.GetProperty("data").GetString()??"");if(data.Length>65536)throw new IOException("Datenblock zu groß");bridge.Send(data);break;
   case "screenDisconnect":bridge.Close();break;

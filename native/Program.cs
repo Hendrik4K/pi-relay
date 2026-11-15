@@ -23,7 +23,7 @@ public static class Program {
   EventWaitHandle showPanel;Mutex mutex;bool first;
   try{showPanel=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\PiRelayDesktop.Show");mutex=new Mutex(true,"Local\\PiRelayDesktop",out first);}
   catch(Exception e) when(e is UnauthorizedAccessException or WaitHandleCannotBeOpenedException or IOException){
-   System.Windows.MessageBox.Show("Pi Relay kann nicht starten: Ein anderes Programm oder Windows-Konto blockiert den Start.\n"+e.Message,"Pi Relay");return;}
+   System.Windows.MessageBox.Show(Lang.L("Pi Relay kann nicht starten: Ein anderes Programm oder Windows-Konto blockiert den Start.\n","Pi Relay can't start: another program or Windows account is blocking it.\n")+e.Message,"Pi Relay");return;}
   using var showHandle=showPanel;using var mutexHandle=mutex;
   if(!first){showPanel.Set();return;}
   var app=new System.Windows.Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
@@ -96,9 +96,10 @@ public sealed class RelayWindow : Window {
  private object? surface;
  public RelayWindow(){
   Directory.CreateDirectory(dataFolder);try{saved=Json.Decode<SavedState>(File.ReadAllText(Path.Combine(dataFolder,"settings.json")))??new();}catch{}
+  if(saved.Settings.Language is not ("de" or "en"))saved.Settings.Language=Lang.English?"en":"de";Lang.English=saved.Settings.Language=="en";
   foreach(var id in new[]{"codex","claude"}){saved.Agents.TryAdd(id,new());agents[id]=new(()=>Dispatcher.BeginInvoke(new Action(Push)));}
-  viewerUpdates=new(ViewerUpdates.DefaultRoot,()=>Dispatcher.BeginInvoke(new Action(Push)),message=>Dispatcher.BeginInvoke(new Action(()=>{Notice(message);tray.ShowBalloonTip(8000,"Pi Relay · Externer Viewer",message,Forms.ToolTipIcon.Info);})));
-  integratedViewer=new(AppContext.BaseDirectory,dataFolder,typeof(RelayWindow).Assembly.GetName().Version?.ToString(3)??"",IntegratedViewer.NpmTags(),()=>Dispatcher.BeginInvoke(new Action(Push)),message=>Dispatcher.BeginInvoke(new Action(()=>{Notice(message);tray.ShowBalloonTip(8000,"Pi Relay · Integrierter Viewer",message,Forms.ToolTipIcon.Info);})));
+  viewerUpdates=new(ViewerUpdates.DefaultRoot,()=>Dispatcher.BeginInvoke(new Action(Push)),message=>Dispatcher.BeginInvoke(new Action(()=>{Notice(message);tray.ShowBalloonTip(8000,L("Pi Relay · Externer Viewer","Pi Relay · External viewer"),message,Forms.ToolTipIcon.Info);})));
+  integratedViewer=new(AppContext.BaseDirectory,dataFolder,typeof(RelayWindow).Assembly.GetName().Version?.ToString(3)??"",IntegratedViewer.NpmTags(),()=>Dispatcher.BeginInvoke(new Action(Push)),message=>Dispatcher.BeginInvoke(new Action(()=>{Notice(message);tray.ShowBalloonTip(8000,L("Pi Relay · Integrierter Viewer","Pi Relay · Integrated viewer"),message,Forms.ToolTipIcon.Info);})));
   reachability=new(()=>Dispatcher.BeginInvoke(new Action(Push)));
   icons=new(dataFolder);
   Width=520;Height=panelTargetHeight;Title="Pi Relay";WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;ShowInTaskbar=false;Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,21,26));Content=web;
@@ -109,7 +110,7 @@ public sealed class RelayWindow : Window {
   revealTimer.Tick+=(_,_)=>FinishReveal();
   resizeTimer.Tick+=(_,_)=>AdvancePanelSize();
   idleTimer.Tick+=(_,_)=>CheckIdleCollapse();idleTimer.Start();
-  BuildTrayMenu();tray.Text="Pi Relay · getrennt";tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};StartSpinIfRestarted();UpdateIcon();tray.Visible=true;
+  BuildTrayMenu();tray.Text=L("Pi Relay · getrennt","Pi Relay · disconnected");tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};StartSpinIfRestarted();UpdateIcon();tray.Visible=true;
   timer.Tick+=(_,_)=>{foreach(var connection in connections.Values)connection.Refresh();viewerUpdates.Tick();integratedViewer.Tick();if(++reachTicks>=(IsVisible&&Opacity>0?5:30))CheckReachability();Push();};timer.Start();
   // Tray startup is hidden, never iconically minimized. A taskbar-less WPF
   // minimized window becomes a tiny desktop bar and can leave WebView2 at 0px.
@@ -131,7 +132,7 @@ public sealed class RelayWindow : Window {
   // An unreadable ~/.ssh/config is reported, not mistaken for a broken WebView2.
   try{await Refresh();}catch(Exception e){Log("SSH-Konfiguration nicht lesbar: "+e.Message);}
   if(saved.Settings.Minimized&&!revealRequested)CompleteHide();else ShowPanel();WriteStatus();
- }catch(Exception e){System.Windows.MessageBox.Show("Pi Relay konnte nicht starten. Microsoft Edge WebView2 Runtime prüfen.\n"+e.Message,"Pi Relay");Quit();}}
+ }catch(Exception e){System.Windows.MessageBox.Show(L("Pi Relay konnte nicht starten. Microsoft Edge WebView2 Runtime prüfen.\n","Pi Relay couldn't start. Check the Microsoft Edge WebView2 Runtime.\n")+e.Message,"Pi Relay");Quit();}}
  private PanelPhase Phase=>revealing?PanelPhase.Revealing:collapsing?PanelPhase.Collapsing:IsVisible&&Opacity>0?PanelPhase.Visible:PanelPhase.Hidden;
  // Reveals slide in from where the panel currently is (mid-collapse or fully hidden); without motion it just appears.
  internal void RevealPanel(){
@@ -211,7 +212,7 @@ public sealed class RelayWindow : Window {
   case "cancelWait":if(waitingFor.TryGetValue(r.GetProperty("alias").GetString()??"",out var waitCancel))waitCancel.Cancel();break;
   case "connectTerminal":ConnectTerminal(r.GetProperty("alias").GetString()??"");break;
   case "disconnectProfile":var alias=r.GetProperty("alias").GetString()??"";if(connections.TryGetValue(alias,out var connection))connection.Dispose();if(terminals.Remove(alias,out var terminal))terminal.Finish();Log(alias+": SSH-Verbindung getrennt");break;
-  case "pickVncViewer":var viewer=new Microsoft.Win32.OpenFileDialog{Title="VNC Viewer auswählen",Filter="VNC Viewer (*.exe)|*.exe"};if(viewer.ShowDialog(this)==true){saved.Settings.VncViewer=viewer.FileName;saved.Settings.ManagedViewer=false;Save();Push();}break;
+  case "pickVncViewer":var viewer=new Microsoft.Win32.OpenFileDialog{Title=L("VNC Viewer auswählen","Choose a VNC viewer"),Filter="VNC Viewer (*.exe)|*.exe"};if(viewer.ShowDialog(this)==true){saved.Settings.VncViewer=viewer.FileName;saved.Settings.ManagedViewer=false;Save();Push();}break;
   case "checkViewerUpdate":await viewerUpdates.Check();break;
   case "skipViewerUpdate":viewerUpdates.SkipVersion(r.GetProperty("provider").GetString()??"",r.GetProperty("version").GetString()??"");break;
   case "restoreViewerUpdate":viewerUpdates.RestoreSkippedVersion();break;
@@ -219,7 +220,7 @@ public sealed class RelayWindow : Window {
   case "installViewer":await viewerUpdates.InstallTiger();saved.Settings.ManagedViewer=true;Save();Push();break;
   case "rollbackViewer":viewerUpdates.Rollback();break;
   case "useManagedViewer":saved.Settings.ManagedViewer=true;Save();Push();break;
-  case "importRealVnc":var classic=new Microsoft.Win32.OpenFileDialog{Title="Vorhandenen portablen RealVNC Classic Viewer auswählen",Filter="RealVNC Classic (*.exe)|*.exe"};if(classic.ShowDialog(this)==true){await viewerUpdates.ImportRealVnc(classic.FileName);saved.Settings.ManagedViewer=true;Save();Push();}break;
+  case "importRealVnc":var classic=new Microsoft.Win32.OpenFileDialog{Title=L("Vorhandenen portablen RealVNC Classic Viewer auswählen","Choose an existing portable RealVNC Classic viewer"),Filter="RealVNC Classic (*.exe)|*.exe"};if(classic.ShowDialog(this)==true){await viewerUpdates.ImportRealVnc(classic.FileName);saved.Settings.ManagedViewer=true;Save();Push();}break;
   // The switch in "Externer Viewer" decides what the main screen action opens.
   case "connectScreen":if(saved.Settings.ExternalViewer)await OpenExternalScreen(r.GetProperty("alias").GetString()??"");else OpenScreen(r.GetProperty("alias").GetString()??"");break;
   case "checkIntegratedViewer":await integratedViewer.Check();break;
@@ -231,7 +232,7 @@ public sealed class RelayWindow : Window {
   // Activation restarts Pi Relay; active SSH sessions end only after the user confirmed exactly that.
   case "activateIntegratedViewer":if(connections.Values.Any(c=>c.IsReady)&&!(r.TryGetProperty("confirm",out var confirmed)&&confirmed.GetBoolean()))throw new InvalidOperationException("SSH-Verbindungen sind aktiv. Bitte den Neustart ausdrücklich bestätigen.");integratedViewer.StartActivation(Environment.ProcessId);Log("Neue Pi-Relay-Version wird aktiviert; Pi Relay startet neu");Quit();break;
   case "connectScreenExternal":await OpenExternalScreen(r.GetProperty("alias").GetString()??"");break;
-  case "saveSettings":var settings=r.GetProperty("settings");if(settings.TryGetProperty("minimized",out var min))saved.Settings.Minimized=min.GetBoolean();if(settings.TryGetProperty("motion",out var motion))saved.Settings.Motion=motion.GetBoolean();if(settings.TryGetProperty("clipboardFromPi",out var fromPi))saved.Settings.ClipboardFromPi=fromPi.GetBoolean();if(settings.TryGetProperty("clipboardToPi",out var toPi))saved.Settings.ClipboardToPi=toPi.GetBoolean();if(settings.TryGetProperty("showFps",out var fps)){saved.Settings.ShowFps=fps.GetBoolean();foreach(var screen in screens.Values)screen.SettingsChanged();}if(settings.TryGetProperty("externalViewer",out var external)){saved.Settings.ExternalViewer=external.GetBoolean();Log(external.GetBoolean()?"Pi-Bildschirm öffnet jetzt den externen Viewer":"Pi-Bildschirm öffnet jetzt den integrierten Viewer");}if(settings.TryGetProperty("autostart",out var start)){using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");if(start.GetBoolean())key.SetValue("PiRelay","\""+Environment.ProcessPath+"\"");else key.DeleteValue("PiRelay",false);saved.Settings.Autostart=start.GetBoolean();}Save();Push();break;
+  case "saveSettings":var settings=r.GetProperty("settings");if(settings.TryGetProperty("minimized",out var min))saved.Settings.Minimized=min.GetBoolean();if(settings.TryGetProperty("motion",out var motion))saved.Settings.Motion=motion.GetBoolean();if(settings.TryGetProperty("clipboardFromPi",out var fromPi))saved.Settings.ClipboardFromPi=fromPi.GetBoolean();if(settings.TryGetProperty("clipboardToPi",out var toPi))saved.Settings.ClipboardToPi=toPi.GetBoolean();if(settings.TryGetProperty("language",out var language)){saved.Settings.Language=language.GetString()=="en"?"en":"de";Lang.English=saved.Settings.Language=="en";foreach(var screen in screens.Values)screen.SettingsChanged();foreach(var openTerminal in terminals.Values)openTerminal.LanguageChanged(saved.Settings.Language);BuildTrayMenu();}if(settings.TryGetProperty("showFps",out var fps)){saved.Settings.ShowFps=fps.GetBoolean();foreach(var screen in screens.Values)screen.SettingsChanged();}if(settings.TryGetProperty("externalViewer",out var external)){saved.Settings.ExternalViewer=external.GetBoolean();Log(external.GetBoolean()?"Pi-Bildschirm öffnet jetzt den externen Viewer":"Pi-Bildschirm öffnet jetzt den integrierten Viewer");}if(settings.TryGetProperty("autostart",out var start)){using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");if(start.GetBoolean())key.SetValue("PiRelay","\""+Environment.ProcessPath+"\"");else key.DeleteValue("PiRelay",false);saved.Settings.Autostart=start.GetBoolean();}Save();Push();break;
   // Changing the Pi address rewrites HostName for all aliases on that host and carries its trusted keys.
   case "setHost":{var from=r.GetProperty("from").GetString()??"";var to=(r.GetProperty("to").GetString()??"").Trim();
    if(!profiles.Any(p=>p.Hostname==from))throw new InvalidOperationException("Unbekannte Pi-Adresse");
@@ -240,14 +241,14 @@ public sealed class RelayWindow : Window {
    Log("Pi-Adresse "+from+" → "+to+" ("+aliases+" Zugänge, "+keys+" Schlüssel-Fingerabdrücke übernommen)");
    Notice(connections.Values.Any(c=>c.IsReady)?"Neue Adresse gespeichert. Laufende Verbindungen bleiben bis zum Trennen auf der alten Adresse.":"Neue Adresse gespeichert. Beim nächsten Verbinden gilt "+to+".");
    break;}
-  case "pickIcon":{var slot=r.GetProperty("slot").GetString()??"";var picker=new Microsoft.Win32.OpenFileDialog{Title="Eigenes Bild auswählen",Filter="Bilder (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg"};
+  case "pickIcon":{var slot=r.GetProperty("slot").GetString()??"";var picker=new Microsoft.Win32.OpenFileDialog{Title=L("Eigenes Bild auswählen","Choose your own picture"),Filter=L("Bilder","Pictures")+" (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg"};
    if(picker.ShowDialog(this)==true){icons.Import(slot,picker.FileName);Log("Eigenes Bild für "+slot+" übernommen");Push();}
    break;}
   case "resetIcon":icons.Reset(r.GetProperty("slot").GetString()??"");Push();break;
   case "openConfig":Open("notepad.exe",Path.Combine(Discovery.SshFolder,"config"));break;
   case "openKeyFolder":Open("explorer.exe",Discovery.SshFolder);break;
   case "copyKey":var path=r.GetProperty("path").GetString();if(!keys.Any(k=>k.Path==path))throw new InvalidOperationException("Unbekannter öffentlicher Schlüssel");System.Windows.Clipboard.SetText(File.ReadAllText(path!));Notice("Öffentlicher Schlüssel kopiert.");break;
-  case "addKey":var dialog=new Microsoft.Win32.OpenFileDialog{Filter="Öffentliche SSH-Schlüssel (*.pub)|*.pub",InitialDirectory=Discovery.SshFolder};if(dialog.ShowDialog(this)==true){saved.AddedKeys.Add(dialog.FileName);Save();await Refresh();}break;
+  case "addKey":var dialog=new Microsoft.Win32.OpenFileDialog{Filter=L("Öffentliche SSH-Schlüssel","Public SSH keys")+" (*.pub)|*.pub",InitialDirectory=Discovery.SshFolder};if(dialog.ShowDialog(this)==true){saved.AddedKeys.Add(dialog.FileName);Save();await Refresh();}break;
   case "saveAgent":var id=AgentId(r);var config=Json.Decode<AgentConfig>(r.GetProperty("config").GetRawText())??throw new InvalidOperationException("Ungültiges Profil");if(!profiles.Any(p=>p.Alias==config.Alias)||!config.Root.StartsWith('/'))throw new InvalidOperationException("Bekannten SSH-Zugang und absoluten Ordner wählen");agents[id].Dispose();saved.Agents[id]=config;Save();Log(id+": Zugang zugeordnet");break;
   case "connectAgent":var agentId=AgentId(r);var agentConfig=saved.Agents[agentId];var shared=await EnsureConnection(agentConfig.Alias);await shared.Request("list",new{path="."},agentConfig);agents[agentId].Bind(shared,agentConfig);Log(agentId+": Zugriff freigegeben über "+agentConfig.Alias);break;
   case "disconnectAgent":var stop=AgentId(r);agents[stop].Dispose();Log(stop+": Agent-Zugriff beendet; SSH bleibt verbunden");break;
@@ -293,7 +294,7 @@ public sealed class RelayWindow : Window {
  }
  private void ConnectTerminal(string alias){
   if(!connections.TryGetValue(alias,out var session)||!session.IsReady)throw new InvalidOperationException("Zuerst auf den Zugang klicken und den Sicherheitsschlüssel bestätigen.");
-  if(!terminals.TryGetValue(alias,out var terminal)){terminal=new TerminalWindow(session);terminals[alias]=terminal;}
+  if(!terminals.TryGetValue(alias,out var terminal)){terminal=new TerminalWindow(session,saved.Settings.Language);terminals[alias]=terminal;}
   terminal.Reveal();
  }
  // The integrated viewer needs no external EXE. Opening it is the explicit user action that may
@@ -344,17 +345,20 @@ public sealed class RelayWindow : Window {
   spinClock.Restart();spinTimer.Start();
  }
  // Tray menu in the app's look. The version line checks for updates on click and offers them one after another.
+ // Native texts (tray menu, dialogs) follow the language chosen in the settings; the panel translates itself.
+ private static string L(string de,string en)=>Lang.L(de,en);
  private void BuildTrayMenu(){
+  var previous=tray.ContextMenuStrip;
   var menu=TrayMenu.Create();
   var versionText="Pi Relay "+integratedViewer.AppVersion+" · noVNC "+(integratedViewer.Installed==""?"?":integratedViewer.Installed);
-  var version=new VersionItem{Font=menu.Font,ToolTipText="Klicken: nach Updates suchen"};version.Set(versionText,TrayMenu.Muted,false);menu.Items.Add(version);
+  var version=new VersionItem{Font=menu.Font,ToolTipText=L("Klicken: nach Updates suchen","Click: check for updates")};version.Set(versionText,TrayMenu.Muted,false);menu.Items.Add(version);
   var keepOpen=false;var checking=false;
   menu.ItemClicked+=(_,e)=>keepOpen=e.ClickedItem==version;
   menu.Closing+=(_,e)=>{if(keepOpen&&e.CloseReason==Forms.ToolStripDropDownCloseReason.ItemClicked)e.Cancel=true;keepOpen=false;};
   version.Click+=async(_,_)=>{
    if(checking)return;checking=true;
    try{
-    version.SlideTo("Suche nach Updates …",TrayMenu.Text);
+    version.SlideTo(L("Suche nach Updates …","Checking for updates …"),TrayMenu.Text);
     await Task.Delay(170);StartSpin();
     var clock=Stopwatch.StartNew();
     try{await integratedViewer.Check();}catch(Exception ex){Log("Update-Prüfung fehlgeschlagen: "+ex.Message);}
@@ -364,25 +368,25 @@ public sealed class RelayWindow : Window {
   };
   version.UpdateClicked+=()=>Dispatcher.BeginInvoke(()=>StartUpdate(version));
   menu.Items.Add(TrayMenu.Spacer());
-  menu.Items.Add(TrayMenu.Item("Pi Relay öffnen",(_,_)=>Dispatcher.BeginInvoke(RevealPanel)));
-  menu.Items.Add(TrayMenu.Item("SSH-Zugänge neu einlesen",async(_,_)=>{try{await Refresh();}catch(Exception e){Log("SSH-Konfiguration nicht lesbar: "+e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);}}));
+  menu.Items.Add(TrayMenu.Item(L("Pi Relay öffnen","Open Pi Relay"),(_,_)=>Dispatcher.BeginInvoke(RevealPanel)));
+  menu.Items.Add(TrayMenu.Item(L("SSH-Zugänge neu einlesen","Reload SSH accesses"),async(_,_)=>{try{await Refresh();}catch(Exception e){Log("SSH-Konfiguration nicht lesbar: "+e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);}}));
   var activateItem=TrayMenu.Item("",(_,_)=>Dispatcher.BeginInvoke(()=>Restart(true)));activateItem.ForeColor=TrayMenu.Amber;activateItem.Visible=false;menu.Items.Add(activateItem);
-  menu.Items.Add(TrayMenu.Item("Pi Relay neu starten",(_,_)=>Dispatcher.BeginInvoke(()=>Restart(false))));
+  menu.Items.Add(TrayMenu.Item(L("Pi Relay neu starten","Restart Pi Relay"),(_,_)=>Dispatcher.BeginInvoke(()=>Restart(false))));
   menu.Items.Add(TrayMenu.Spacer());
-  menu.Items.Add(TrayMenu.Exit("Beenden",(_,_)=>Dispatcher.BeginInvoke(Quit)));
-  menu.Opening+=(_,_)=>{var staged=integratedViewer.Staged;activateItem.Visible=staged!=null;if(staged!=null)activateItem.Text="Pi Relay "+staged.AppVersion+" aktivieren & neu starten";if(!checking)_=ShowVersionState(version,versionText,false);};
-  tray.ContextMenuStrip=menu;
+  menu.Items.Add(TrayMenu.Exit(L("Beenden","Quit"),(_,_)=>Dispatcher.BeginInvoke(Quit)));
+  menu.Opening+=(_,_)=>{var staged=integratedViewer.Staged;activateItem.Visible=staged!=null;if(staged!=null)activateItem.Text=L("Pi Relay "+staged.AppVersion+" aktivieren & neu starten","Activate Pi Relay "+staged.AppVersion+" & restart");if(!checking)_=ShowVersionState(version,versionText,false);};
+  tray.ContextMenuStrip=menu;previous?.Dispose();
  }
  // Up to date: the version line glows green once. Otherwise it names what is waiting and shows the refresh button.
  private async Task ShowVersionState(VersionItem version,string versionText,bool animate){
   var staged=integratedViewer.Staged;
   (string text,Color tint,bool update) state=
-   staged!=null?("Pi Relay "+staged.AppVersion+" bereit zum Aktivieren",TrayMenu.Amber,true):
-   integratedViewer.Building?("Update wird gebaut …",TrayMenu.Amber,false):
-   integratedViewer.HasUpdate&&!integratedViewer.IsSkipped?("noVNC "+integratedViewer.Latest+" verfügbar",TrayMenu.Amber,integratedViewer.ProjectRoot!=null):
-   animate&&integratedViewer.Error!=""?("Prüfung nicht möglich (offline?)",TrayMenu.Muted,false):
+   staged!=null?(L("Pi Relay "+staged.AppVersion+" bereit zum Aktivieren","Pi Relay "+staged.AppVersion+" ready to activate"),TrayMenu.Amber,true):
+   integratedViewer.Building?(L("Update wird gebaut …","Building update …"),TrayMenu.Amber,false):
+   integratedViewer.HasUpdate&&!integratedViewer.IsSkipped?("noVNC "+integratedViewer.Latest+L(" verfügbar"," available"),TrayMenu.Amber,integratedViewer.ProjectRoot!=null):
+   animate&&integratedViewer.Error!=""?(L("Prüfung nicht möglich (offline?)","Check not possible (offline?)"),TrayMenu.Muted,false):
    (versionText,TrayMenu.Muted,false);
-  version.ToolTipText=!state.update?"Klicken: nach Updates suchen":staged!=null?"Knopf rechts: neue Version aktivieren (Pi Relay startet neu)":"Knopf rechts: Update bauen und prüfen";
+  version.ToolTipText=!state.update?L("Klicken: nach Updates suchen","Click: check for updates"):staged!=null?L("Knopf rechts: neue Version aktivieren (Pi Relay startet neu)","Button on the right: activate the new version (Pi Relay restarts)"):L("Knopf rechts: Update bauen und prüfen","Button on the right: build and test the update");
   if(!animate){version.Set(state.text,state.tint,state.update);return;}
   version.SlideTo(state.text,state.tint,state.update);
   if(state.text==versionText){await Task.Delay(VersionItem.SlideTime);version.Glow();}
@@ -392,14 +396,14 @@ public sealed class RelayWindow : Window {
  private void StartUpdate(VersionItem version){
   try{
    if(integratedViewer.Staged!=null){Restart(true);return;}
-   if(integratedViewer.HasUpdate&&!integratedViewer.Building){integratedViewer.StartBuild(integratedViewer.Latest);Log("Integrierter Viewer: Update-Build im PowerShell-Fenster gestartet");version.SlideTo("Update wird gebaut …",TrayMenu.Amber);}
+   if(integratedViewer.HasUpdate&&!integratedViewer.Building){integratedViewer.StartBuild(integratedViewer.Latest);Log("Integrierter Viewer: Update-Build im PowerShell-Fenster gestartet");version.SlideTo(L("Update wird gebaut …","Building update …"),TrayMenu.Amber);}
   }catch(Exception e){Notice(e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);}
  }
  // A restart ends every SSH session (a program running in the terminal is stopped too): with sessions
  // open it asks first, in front of everything, also when it was started from the tray menu.
  private bool ConfirmEndSessions(string question){
   if(!connections.Values.Any(c=>c.IsReady)&&!agents.Values.Any(a=>a.VisibleState=="busy"))return true;
-  return Forms.MessageBox.Show(question+"\n\nDabei werden die offenen SSH-Verbindungen getrennt: Terminal (laufende Programme darin werden beendet), Pi-Bildschirm und Agenten.","Pi Relay",Forms.MessageBoxButtons.YesNo,Forms.MessageBoxIcon.Question,Forms.MessageBoxDefaultButton.Button2,Forms.MessageBoxOptions.DefaultDesktopOnly)==Forms.DialogResult.Yes;
+  return Forms.MessageBox.Show(question+L("\n\nDabei werden die offenen SSH-Verbindungen getrennt: Terminal (laufende Programme darin werden beendet), Pi-Bildschirm und Agenten.","\n\nThis ends the open SSH connections: terminal (programs running in it are stopped), Pi screen and agents."),"Pi Relay",Forms.MessageBoxButtons.YesNo,Forms.MessageBoxIcon.Question,Forms.MessageBoxDefaultButton.Button2,Forms.MessageBoxOptions.DefaultDesktopOnly)==Forms.DialogResult.Yes;
  }
  // Loaded once into memory, so the ui folder stays free for an update swap.
  private Bitmap? Berry(){if(berryImage!=null)return berryImage;var file=Path.Combine(AppContext.BaseDirectory,"ui","assets","raspberry.png");if(!File.Exists(file))return null;using var stream=new MemoryStream(File.ReadAllBytes(file));using var loaded=Image.FromStream(stream);return berryImage=new Bitmap(loaded);}
@@ -417,7 +421,7 @@ public sealed class RelayWindow : Window {
  private void UpdateIcon(){try{var key=agents.GetValueOrDefault("codex")?.VisibleState+"|"+agents.GetValueOrDefault("claude")?.VisibleState+"|"+spinAngle;if(key==iconKey&&trayIcon!=null)return;iconKey=key;var berry=Berry();if(berry==null)return;using var bitmap=new Bitmap(32,32);using(var g=Graphics.FromImage(bitmap)){g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;DrawBerry(g,berry);using var blue=new SolidBrush(agents.TryGetValue("codex",out var a)&&a.VisibleState is "active" or "busy"?Color.FromArgb(66,133,255):Color.FromArgb(81,89,112));using var orange=new SolidBrush(agents.TryGetValue("claude",out var b)&&b.VisibleState is "active" or "busy"?Color.FromArgb(218,119,86):Color.FromArgb(107,84,79));g.FillEllipse(blue,25,8,6,6);g.FillEllipse(orange,25,19,6,6);}var handle=bitmap.GetHicon();var next=(System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone();DestroyIcon(handle);tray.Icon=next;trayIcon?.Dispose();trayIcon=next;tray.Text="Pi Relay · Codex: "+agents.GetValueOrDefault("codex")?.VisibleState+" · Claude: "+agents.GetValueOrDefault("claude")?.VisibleState;}catch{}}
  // Tray restart, optionally activating a tested staged build. Ending live SSH sessions needs a confirmation.
  private void Restart(bool activate){
-  if(!ConfirmEndSessions(activate?"Die neue Version aktivieren und Pi Relay neu starten?":"Pi Relay jetzt neu starten?"))return;
+  if(!ConfirmEndSessions(activate?L("Die neue Version aktivieren und Pi Relay neu starten?","Activate the new version and restart Pi Relay?"):L("Pi Relay jetzt neu starten?","Restart Pi Relay now?")))return;
   Log(activate?"Aktivierung der neuen Version angefordert":"Neustart angefordert");
   try{if(activate)integratedViewer.StartActivation(Environment.ProcessId);else Relaunch.Start(Environment.ProcessId,Environment.ProcessPath!);}
   catch(Exception e){Notice(e.Message);tray.ShowBalloonTip(8000,"Pi Relay",e.Message,Forms.ToolTipIcon.Warning);return;}

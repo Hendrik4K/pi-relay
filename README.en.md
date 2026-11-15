@@ -1,14 +1,12 @@
-<p align="center"><img src="public/assets/raspberry.png" width="92" alt="Pi Relay"></p>
-
 # Pi Relay <a href="README.en.md"><img align="right" src="docs/screenshots/flag-gb.svg" height="22" alt="English" title="English"></a><a href="README.md"><img align="right" src="docs/screenshots/flag-de.svg" height="22" alt="Deutsch" title="Deutsch"></a><img align="right" src="docs/screenshots/sprache.svg" height="22" alt="Language" title="Choose language">
 
-<p align="center"><a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a> <a href="https://github.com/Hendrik4K/pi-relay/releases/latest"><img src="https://img.shields.io/github/v/release/Hendrik4K/pi-relay?label=Release&color=c51a4a" alt="Release"></a> <a href="https://github.com/Hendrik4K/pi-relay/releases"><img src="https://img.shields.io/github/downloads/Hendrik4K/pi-relay/total?label=Downloads&color=6f42c1" alt="Downloads"></a> <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2ea44f" alt="License MIT"></a> <img src="https://img.shields.io/badge/VNC%20port-not%20exposed-555" alt="VNC%20port"></p>
+<p align="center"><a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a> <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <img src="https://img.shields.io/badge/VNC%20port-not%20exposed-555" alt="VNC%20port"></p>
 
 **Built for headless access to your Raspberry Pi: control it from your Windows desktop in a small viewer window, with no open VNC ports and updates built in.**
 
 The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is welcome, the Pi loves hardware), confirm once. From then on Pi Relay knocks through an SSH tunnel whenever needed and you work on the Pi as if it sat next to you. With a built-in FPS counter, in case you want to watch your Pi sweat.
 
-<p align="center"><img src="docs/screenshots/taskleiste.png" width="420" alt="Pi Relay in the Windows notification area"></p>
+<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay in the Windows notification area"></p>
 
 <p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Closing the Pi screen and reopening it from the raspberry icon in the taskbar"></p>
 
@@ -60,7 +58,8 @@ Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can dro
 - **Screen and terminal with one click.** In the Pi Relay management panel there are two buttons next to your access: the screen icon opens the Pi desktop, the terminal button right next to it (`>_`) opens a real terminal where you type on your Pi over SSH.
 - **Your AI agents right on the Pi.** Codex (ChatGPT) or Claude get easy SSH access so you can work with AI agents on the Pi from Windows. You give each agent one project folder. Reading is fine; changing files and running commands stay off until you switch them on one by one.
 - **Keys under control.** You manage where your SSH keys live right in the app; YubiKey & co. work.
-- **Your own pictures.** Hover over the Pi, Codex or Claude and stay for about 5 seconds: a ring forms, then you click "PNG ändern" and pick your own picture.
+- **Your own pictures.** Hover over the Pi, Codex or Claude and stay for about 5 seconds: a ring forms, then you click "Change PNG" ("PNG ändern" in German) and pick your own picture.
+- **English or German.** In the settings there's a language switch with a flag left of the X: one click and the whole interface changes language. On an English Windows, Pi Relay starts in English right away.
 - **Low-key and plug & play.** Pi Relay waits quietly in the taskbar and is there with one click.
 
 <ins>Why this exists:</ins> I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
@@ -154,7 +153,7 @@ A second access named `Ersatzzugang` (e.g. with a spare key) is shown as a colla
 <details>
 <summary><b>🖼️ Pictures and trademarks</b></summary>
 
-The two companions for Codex and Claude in this edition are look-alikes drawn for it. If you prefer other pictures, swap them for your own in the app via "PNG ändern".
+The two companions for Codex and Claude in this edition are look-alikes drawn for it. If you prefer other pictures, swap them for your own in the app via "Change PNG" ("PNG ändern" in German).
 
 The source code is under the [MIT license](LICENSE). The characters, the case picture and the icons are **not** covered by it. Raspberry Pi, Claude/Anthropic, Codex/OpenAI, RealVNC and other names are trademarks of their owners. Pi Relay is a private hobby project and not affiliated with any of these companies. Details and third-party software (noVNC, MPL-2.0): see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 

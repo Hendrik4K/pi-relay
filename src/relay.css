@@ -399,3 +399,14 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 /* Tray: with a long server name the monitor moves further left, so the tag covers less of it. */
 .window-actions .screen-button:has(.long-server){width:72px}
 .screen-button .screen-symbol.long-server{margin-right:29px}.screen-button .screen-symbol.long-server .vnc-badge{right:-30px}
+/* Language switch in the settings header: a pill in the app colours with a round flag knob that shows the
+   language you switch to (German UI: knob right, "English"; English UI: knob left, "Deutsch"). */
+.language-switch{position:relative;width:104px;height:33px;margin-right:5px;padding:0;border-radius:17px;background:linear-gradient(90deg,#3a2733,#4a2a3a);border:1px solid #ee96af70;flex-shrink:0;cursor:pointer;touch-action:none;color:#f6d3de;transition:border-color .2s,filter .2s}
+.language-switch:hover{border-color:#ee96afb0;filter:brightness(1.12)}
+.language-switch:focus-visible{outline:2px solid #ee96af;outline-offset:2px}
+.language-knob{position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px #ee96af,0 2px 6px #000a;transform:translateX(71px);transition:transform .28s cubic-bezier(.3,.75,.3,1)}
+.language-knob svg{width:100%;height:100%;display:block}
+.language-switch.en .language-knob{transform:none}
+.language-name{position:absolute;top:0;bottom:0;left:13px;display:flex;align-items:center;font:600 12.5px "Segoe UI",sans-serif;pointer-events:none;transition:left .28s cubic-bezier(.3,.75,.3,1)}
+.language-switch.en .language-name{left:37px}
+[data-motion="false"] .language-knob,[data-motion="false"] .language-name,[data-motion="false"] .language-switch{transition:none}

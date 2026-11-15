@@ -92,7 +92,7 @@ public sealed class ViewerUpdates {
   try{cache.LastAttempt=DateTimeOffset.UtcNow;var latest=await Latest(provider??Store.Manifest.Current?.Provider??"tigervnc");cache.Latest=latest;cache.LastChecked=DateTimeOffset.UtcNow;SaveCache();AnnounceUpdate();}
   catch(Exception e){Error="Update-Prüfung nicht möglich: "+e.Message;SaveCache();}finally{Busy=false;Phase="";changed();gate.Release();}
  }
- private void AnnounceUpdate(){if(HasUpdate&&!IsSkipped&&cache.Latest is {} latest&&cache.NotifiedVersion!=latest.Provider+":"+latest.Version){cache.NotifiedVersion=latest.Provider+":"+latest.Version;SaveCache();notify("Neue Viewer-Version "+latest.Version+" verfügbar. Im Bildschirm-Menü aktualisieren.");}}
+ private void AnnounceUpdate(){if(HasUpdate&&!IsSkipped&&cache.Latest is {} latest&&cache.NotifiedVersion!=latest.Provider+":"+latest.Version){cache.NotifiedVersion=latest.Provider+":"+latest.Version;SaveCache();notify(Lang.L("Neue Viewer-Version "+latest.Version+" verfügbar. Im Bildschirm-Menü aktualisieren.","New viewer version "+latest.Version+" available. Update it in the screen menu."));}}
  public async Task InstallTiger(){
   if(!await gate.WaitAsync(0))return;Busy=true;Phase="downloading";Error="";changed();string? temp=null;
   try{
@@ -105,7 +105,7 @@ public sealed class ViewerUpdates {
    using(var input=File.OpenRead(temp)){if(Convert.ToHexString(MD5.HashData(input)).ToLowerInvariant()!=latest.Digest)throw new IOException("Download stimmt nicht mit der offiziellen Dateiprüfsumme überein");}
    ValidateExecutable(temp,latest);
    Store.Stage(temp,latest.Provider,latest.Version,ViewerStore.Hash(temp),latest.Download);
-   notify(Store.Manifest.Pending!=null?"Viewer-Update bereit. Es wird nach dem Schließen des Viewers aktiviert.":"Portabler TigerVNC Viewer "+latest.Version+" ist bereit.");
+   notify(Store.Manifest.Pending!=null?Lang.L("Viewer-Update bereit. Es wird nach dem Schließen des Viewers aktiviert.","Viewer update ready. It is activated after the viewer is closed."):Lang.L("Portabler TigerVNC Viewer "+latest.Version+" ist bereit.","Portable TigerVNC viewer "+latest.Version+" is ready."));
   }catch(Exception e){Error="Viewer nicht geändert: "+e.Message;throw new IOException(Error,e);}finally{if(temp!=null&&File.Exists(temp))File.Delete(temp);Busy=false;Phase="";changed();gate.Release();}
  }
  public async Task ImportRealVnc(string file){
@@ -147,7 +147,7 @@ public sealed class ViewerUpdates {
  }
  public void Tick(){
   if(Busy)return;
-  try{if(Store.Reload())changed();if(Store.ApplyPending()){changed();notify("Die vorbereitete Viewer-Version ist jetzt aktiv.");}}catch(Exception e){Error=e.Message;changed();}
+  try{if(Store.Reload())changed();if(Store.ApplyPending()){changed();notify(Lang.L("Die vorbereitete Viewer-Version ist jetzt aktiv.","The prepared viewer version is active now."));}}catch(Exception e){Error=e.Message;changed();}
   if(Store.Manifest.Current!=null&&(!cache.LastAttempt.HasValue||DateTimeOffset.UtcNow-cache.LastAttempt.Value>TimeSpan.FromHours(24)))_=Check();
  }
  public void Rollback(){if(Busy)throw new InvalidOperationException("Update läuft noch");Store.Rollback();Error="";changed();}

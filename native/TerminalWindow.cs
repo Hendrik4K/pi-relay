@@ -11,13 +11,15 @@ public sealed class TerminalWindow : Window {
  private readonly WebView2 web=new();
  private readonly SharedSession session;
  private bool ready,finished;
- public TerminalWindow(SharedSession session){
-  this.session=session;Title=session.Alias+" · Pi Relay";Width=980;Height=650;MinWidth=480;MinHeight=320;
+ private string language;
+ public TerminalWindow(SharedSession session,string language="de"){
+  this.session=session;this.language=language;Title=session.Alias+" · Pi Relay";Width=980;Height=650;MinWidth=480;MinHeight=320;
   Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(23,21,26));Content=web;
   session.TerminalOutput+=OnOutput;session.TerminalState+=OnState;
   Closing+=(_,e)=>{if(!finished){e.Cancel=true;Hide();}};
   _=Initialize();
  }
+ public void LanguageChanged(string next){language=next;Send(new{type="terminalLanguage",language=next});}
  public void Reveal(){Show();if(WindowState==WindowState.Minimized)WindowState=WindowState.Normal;Activate();if(ready)Send(new{type="terminalFocus"});}
  private void Send(object message){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(()=>Send(message)));return;}if(ready&&!finished)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(message));}
  private void OnOutput(string data)=>Send(new{type="terminalData",data});
@@ -38,7 +40,7 @@ public sealed class TerminalWindow : Window {
     case "terminalResize":await session.Request("terminal_resize",new{cols=r.GetProperty("cols").GetInt32(),rows=r.GetProperty("rows").GetInt32()});break;
    }
   }catch(Exception ex){OnState(ex.Message);}};
-  web.Source=new Uri("https://pi-relay.local/index.html?terminal="+Uri.EscapeDataString(session.Alias));
+  web.Source=new Uri("https://pi-relay.local/index.html?terminal="+Uri.EscapeDataString(session.Alias)+"&lang="+(language=="en"?"en":"de"));
  }catch(Exception e){System.Windows.MessageBox.Show(e.Message,"Pi Relay Terminal");}}
  public void Finish(){finished=true;session.TerminalOutput-=OnOutput;session.TerminalState-=OnState;web.Dispose();Close();}
 }

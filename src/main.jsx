@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.jsx";
 import "./styles.css";
+import "./i18n.js";
 
 // The VNC client and the terminal are loaded only in their own windows, not in the tray panel.
 const ScreenView = lazy(() => import("./ScreenView.jsx").then((module) => ({ default: module.ScreenView })));

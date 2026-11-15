@@ -2,6 +2,7 @@ import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import RFB from '@novnc/novnc';
 import {ArrowClockwise,ArrowsIn,ArrowsOut,CaretDown,Check,ClipboardText,Microphone,Monitor,Plug,PlugsConnected} from '@phosphor-icons/react';
 import './relay.css';
+import {setLanguage} from './i18n.js';
 
 const bridge=window.chrome?.webview;
 const send=(action,data={})=>bridge?.postMessage({action,...data});
@@ -205,7 +206,7 @@ export function ScreenView(){
   // Paths with shell characters are single-quoted: pasted into a Pi terminal, a name like "$(…).pdf" stays a
   // name and never runs. Plain names (spaces included) stay as they are for file dialogs.
   if(saved.length&&rfb.current){const paths=saved.map(p=>/[$`;|&<>()\\"'!*?{}[\]#]/.test(p)?"'"+p.replace(/'/g,"'\\''")+"'":p).join(String.fromCharCode(10));lastClipboard.current=paths;rfb.current.clipboardPasteFrom(paths);}
-  if(saved.length)flash((saved.length===1?'Datei liegt':saved.length+' Dateien liegen')+' auf dem Pi-Desktop. Der Pfad ist in der Pi-Zwischenablage.'+(skipped.length?' Nicht übertragen: '+skipped.join(', '):''));
+  if(saved.length)flash((saved.length===1?'Datei liegt auf dem Pi-Desktop. Der Pfad ist':saved.length+' Dateien liegen auf dem Pi-Desktop. Die Pfade sind')+' in der Pi-Zwischenablage.'+(skipped.length?' Nicht übertragen: '+skipped.join(', '):''));
   else if(skipped.length)flash('Nicht übertragen: '+skipped.join(', '));
  }
  function toggleFullscreen(){send('screenFullscreen',{on:!fullscreen});}
@@ -214,7 +215,7 @@ export function ScreenView(){
  useEffect(()=>{
   if(!bridge)return;
   const receive=e=>{const m=e.data;switch(m.type){
-   case 'screenInit':setMeta(v=>({...v,version:m.version||''}));setShowFps(Boolean(m.showFps));setFullscreen(Boolean(m.fullscreen));if(m.autoConnect)connect();else{setStatus('disconnected');setMessage('Ansicht neu geladen. Mit „Verbinden“ den Bildschirm erneut öffnen.');}break;
+   case 'screenInit':setLanguage(m.language);setMeta(v=>({...v,version:m.version||''}));setShowFps(Boolean(m.showFps));setFullscreen(Boolean(m.fullscreen));if(m.autoConnect)connect();else{setStatus('disconnected');setMessage('Ansicht neu geladen. Mit „Verbinden“ den Bildschirm erneut öffnen.');}break;
    case 'screenState':setStatus(s=>s==='credentials'?s:'connecting');setWaitSeconds(m.state==='waiting'?m.seconds||1:0);break;
    case 'screenOpened':channel.current?.opened();break;
    case 'screenData':channel.current?.receive(fromBase64(m.data));break;
@@ -226,7 +227,7 @@ export function ScreenView(){
     else setRetrying(0);
     break;
    case 'screenNotice':flash(m.message);break;
-   case 'screenSettings':setShowFps(Boolean(m.showFps));break;
+   case 'screenSettings':setLanguage(m.language);setShowFps(Boolean(m.showFps));break;
    case 'screenFullscreen':setFullscreen(m.on);setToolbar(!m.on);break;
    case 'screenResizeEnd':requestFit();break;
    case 'screenUploadResult':uploads.current.get(m.id)?.(m);uploads.current.delete(m.id);break;

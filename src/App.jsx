@@ -3,6 +3,7 @@ import { GearSix, Terminal, Key, CaretDown, CaretRight, Minus, Info, X, ArrowSqu
 import './relay.css';
 import { ViewerPanel } from './ViewerPanel.jsx';
 import { IntegratedViewerPanel, VncServerCard } from './IntegratedViewerPanel.jsx';
+import { setLanguage } from './i18n.js';
 
 const native = Boolean(window.chrome?.webview);
 const designMode = !native && new URLSearchParams(location.search).has('design');
@@ -21,6 +22,22 @@ const names = {codex:'Codex',claude:'Claude'};
 const stateText = {disconnected:'Getrennt',connecting:'Verbinden …',waiting:'Wartet auf Pi …',key:'Schlüssel bestätigen',connected:'Verbunden',ready:'SSH bereit',active:'Verbunden',busy:'Arbeitet',error:'Verbindung prüfen'};
 
 function request(action,data={}) { if(native) window.chrome.webview.postMessage({action,...data}); }
+// Language switch in the settings header (left of the close button): the round knob shows the language you
+// switch TO, so in German it reads "English" with the British flag. Click, drag or arrow keys switch; the
+// choice is saved and the whole UI follows.
+const FLAGS={de:<svg viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="10" fill="#000"/><rect y="10" width="30" height="10" fill="#D00"/><rect y="20" width="30" height="10" fill="#FFCE00"/></svg>,
+ en:<svg viewBox="15 0 30 30" aria-hidden="true"><clipPath id="uk-t"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><path d="M0,0 v30 h60 v-30 z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#uk-t)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></svg>};
+function LanguageSwitch({value,onChange}){
+ const english=value==='en',target=english?'de':'en',drag=useRef(null);
+ const go=()=>onChange(target);
+ return <button type="button" className={'language-switch'+(english?' en':'')} aria-label={english?'Auf Deutsch umstellen':'Switch to English'} title={english?'Auf Deutsch umstellen':'Switch to English'}
+  onPointerDown={e=>{drag.current={x:e.clientX};e.currentTarget.setPointerCapture?.(e.pointerId);}}
+  onPointerMove={e=>{const d=drag.current;if(!d||d.moved||Math.abs(e.clientX-d.x)<8)return;d.moved=true;go();}}
+  onClick={()=>{const moved=drag.current?.moved;drag.current=null;if(!moved)go();}}
+  onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();go();}}}>
+  <span className="language-knob">{FLAGS[target]}</span><span className="language-name">{english?'Deutsch':'English'}</span>
+ </button>;
+}
 // Typing in the panel keeps it open even with the mouse elsewhere (it folds away after 20 s idle).
 let lastActivity=0;
 if(native&&!/[?&](terminal|screen)=/.test(location.search))addEventListener('keydown',()=>{const now=Date.now();if(now-lastActivity>1000){lastActivity=now;request('panelActivity');}},true);
@@ -184,6 +201,7 @@ export function App() {
   return()=>observer.disconnect();
  },[view,backupOpen]);
  useEffect(()=>{if(native)request('resizePanel',{height:panelHeight,motion:data.settings.motion});},[panelHeight,data.settings.motion]);
+ useEffect(()=>{if(data.settings.language)setLanguage(data.settings.language);},[data.settings.language]);
  useEffect(()=>{body.current?.scrollTo(0,0);if(view!=='home')heading.current?.focus();const key=e=>{if(e.key==='Escape'){e.preventDefault();if(view==='home')collapse();else navigate(view==='events'?'settings':view==='external'?'screen':'home');}};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);},[view]);
  const profile=data.profiles.find(p=>p.alias===selected)||data.profiles[0];
  const v=data.viewer||initial.viewer;
@@ -257,7 +275,7 @@ export function App() {
        <div><h1 ref={heading} tabIndex={-1}>{titles[view]}</h1><span>{view==='home'?(native?'MANAGEMENTZENTRALE':'ENTWURF · BEISPIELSTATUS'):view==='keys'?'DEINE ZUGÄNGE. DEINE SCHLÜSSEL.':view==='screen'?'DEIN DESKTOP. GEMEINSAM VERBUNDEN.':view==='external'?'DEIN RÜCKFALL. DEINE WAHL.':view==='settings'?'SO WIE ES ZU DIR PASST.':view==='agent'?'DEIN PI. DEINE FREIGABE.':'WAS ZULETZT PASSIERT IST.'}</span></div>
       </div>
       <div className="window-actions">
-       {view==='home'?<><button className="icon-button quiet" aria-label="In den Infobereich minimieren" onClick={collapse}><CaretDown size={18}/></button><button className="icon-button screen-button" aria-label="Pi-Bildschirm öffnen" title={useExternal?'Pi-Bildschirm · externer VNC Viewer':'Pi-Bildschirm · '+(piServer?piServer+' auf dem Pi, angezeigt mit noVNC':'integrierter Viewer (noVNC)')} onClick={()=>navigate('screen')}><ScreenIcon external={useExternal} server={piServer}/></button><button className="icon-button" aria-label="Einstellungen" onClick={()=>navigate('settings')}><GearSix size={22}/></button></>:<>{view==='keys'&&<><button className="icon-button" title="SSH-Ordner öffnen" aria-label="SSH-Ordner öffnen" onClick={()=>call('openKeyFolder')}><FolderOpen size={21}/></button><button className="icon-button" title="Schlüssel zuordnen" aria-label="Schlüssel zuordnen" onClick={()=>call('addKey')}><Plus size={21}/></button></>}{view!=='keys'&&<button className="icon-button close-view" aria-label={titles[view]+' schließen'} onClick={closeView}><X size={21}/></button>}</>}
+       {view==='home'?<><button className="icon-button quiet" aria-label="In den Infobereich minimieren" onClick={collapse}><CaretDown size={18}/></button><button className="icon-button screen-button" aria-label="Pi-Bildschirm öffnen" title={useExternal?'Pi-Bildschirm · externer VNC Viewer':'Pi-Bildschirm · '+(piServer?piServer+' auf dem Pi, angezeigt mit noVNC':'integrierter Viewer (noVNC)')} onClick={()=>navigate('screen')}><ScreenIcon external={useExternal} server={piServer}/></button><button className="icon-button" aria-label="Einstellungen" onClick={()=>navigate('settings')}><GearSix size={22}/></button></>:<>{view==='keys'&&<><button className="icon-button" title="SSH-Ordner öffnen" aria-label="SSH-Ordner öffnen" onClick={()=>call('openKeyFolder')}><FolderOpen size={21}/></button><button className="icon-button" title="Schlüssel zuordnen" aria-label="Schlüssel zuordnen" onClick={()=>call('addKey')}><Plus size={21}/></button></>}{view==='settings'&&<LanguageSwitch value={data.settings.language==='en'?'en':'de'} onChange={language=>{setLanguage(language);call('saveSettings',{settings:{language}});}}/>}{view!=='keys'&&<button className="icon-button close-view" aria-label={titles[view]+' schließen'} onClick={closeView}><X size={21}/></button>}</>}
       </div>
      </header>
      <div ref={body} className={'view-body view-'+view} key={view}>
@@ -297,7 +315,7 @@ export function App() {
    {view==='events'&&<div className="event-list">{data.events.length?data.events.slice().reverse().map((e,i)=><div className="event" key={i}><span>{e.time}</span><p>{e.message}</p></div>):<p className="dialog-description">Noch keine Ereignisse. Anmeldungen werden nur nach deinem Klick gestartet.</p>}</div>}
      </div>
      {['home','keys','settings','screen'].includes(view)&&<footer className="app-footer">
-      {view==='home'||view==='keys'?<><button className={'key-button '+(view==='keys'?'danger':'')} onClick={()=>{navigate(view==='keys'?'home':'keys');if(view!=='keys')call('refresh');}}>{view==='keys'?<X size={21}/>:<Key size={23}/>}Schlüssel {view==='keys'?'schließen':'verwalten'}</button>{view==='home'&&<label className="check-label check-after">Minimiert starten<input type="checkbox" checked={data.settings.minimized} onChange={e=>call('saveSettings',{settings:{minimized:e.target.checked}})}/><span className="check-visual"><Check size={15} weight="bold"/></span></label>}</>:view==='screen'?<button className="key-button subdued external-link" onClick={()=>navigate('external')}>Externer Viewer (Rückfall){externalUpdate&&<span className="external-update">{v.latest}</span>}</button>:view==='settings'?<><button className="key-button subdued" onClick={()=>navigate('events')}><ArrowClockwise size={18}/>Verlauf anzeigen</button><button className="key-button danger" onClick={()=>call('quit')}><Power size={18}/>Pi Relay beenden</button></>:<button className="key-button subdued" onClick={closeView}><X size={18}/>{view==='events'?'Zurück zu Einstellungen':titles[view]+' schließen'}</button>}
+      {view==='home'||view==='keys'?<><button className={'key-button '+(view==='keys'?'danger':'')} onClick={()=>{navigate(view==='keys'?'home':'keys');if(view!=='keys')call('refresh');}}>{view==='keys'?<X size={21}/>:<Key size={23}/>}{view==='keys'?'Schlüssel schließen':'Schlüssel verwalten'}</button>{view==='home'&&<label className="check-label check-after">Minimiert starten<input type="checkbox" checked={data.settings.minimized} onChange={e=>call('saveSettings',{settings:{minimized:e.target.checked}})}/><span className="check-visual"><Check size={15} weight="bold"/></span></label>}</>:view==='screen'?<button className="key-button subdued external-link" onClick={()=>navigate('external')}>Externer Viewer (Rückfall){externalUpdate&&<span className="external-update">{v.latest}</span>}</button>:view==='settings'?<><button className="key-button subdued" onClick={()=>navigate('events')}><ArrowClockwise size={18}/>Verlauf anzeigen</button><button className="key-button danger" onClick={()=>call('quit')}><Power size={18}/>Pi Relay beenden</button></>:<button className="key-button subdued" onClick={closeView}><X size={18}/>{view==='events'?'Zurück zu Einstellungen':titles[view]+' schließen'}</button>}
      </footer>}
     </div>
    </section>

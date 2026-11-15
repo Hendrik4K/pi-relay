@@ -3,6 +3,7 @@ import {Terminal} from '@xterm/xterm';
 import {FitAddon} from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './relay.css';
+import {setLanguage} from './i18n.js';
 
 export function TerminalView(){
  const host=useRef(null),[message,setMessage]=useState('');
@@ -15,6 +16,7 @@ export function TerminalView(){
   const receive=e=>{
    if(e.data.type==='terminalData')term.write(Uint8Array.from(atob(e.data.data),c=>c.charCodeAt(0)));
    if(e.data.type==='terminalState')setMessage(e.data.message);
+   if(e.data.type==='terminalLanguage')setLanguage(e.data.language);
    if(e.data.type==='terminalFocus'){setMessage('');term.focus();send('terminalReady',{cols:term.cols,rows:term.rows});}
   };
   bridge?.addEventListener('message',receive);
