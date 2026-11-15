@@ -130,6 +130,7 @@ const {chromium}=load('playwright');
   const panel=await page.locator('.relay').boundingBox();
   // Positions are read only once they stop moving (pictures and animations can still settle on slow machines).
   const settled=async selector=>{let last=null;for(let i=0;i<40;i++){const box=await page.locator(selector).boundingBox();if(last&&box.x===last.x&&box.y===last.y&&box.height===last.height)return box;last=box;await page.waitForTimeout(100);}return last;};
+  await page.waitForFunction(()=>[...document.querySelectorAll('.brand img')].every(i=>i.complete&&i.naturalWidth>0),null,{timeout:10000});
   const homeHeader=await settled('.app-header');
   const homeTitle=await settled('.brand h1');
   const save=async name=>{await page.waitForTimeout(270);return page.locator('.panel-viewport').screenshot({path:path.join(output,'views-'+name+'-20261111.png')});};
@@ -138,7 +139,7 @@ const {chromium}=load('playwright');
   await page.getByRole('heading',{name:'SSH-Schlüssel',exact:true}).waitFor();
   // Measure once the view has settled: on slow machines the arrival animation and the key picture
   // can still shift things for a moment after the heading appears.
-  await page.waitForFunction(()=>[...document.images].every(i=>i.complete)&&document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:5000}).catch(()=>{});
+  await page.waitForFunction(()=>[...document.querySelectorAll('.brand img')].every(i=>i.complete&&i.naturalWidth>0)&&document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:5000}).catch(()=>{});
   const keysHeader=await settled('.app-header');
   const keysTitle=await settled('.brand h1');
   assert.equal(keysHeader.y+keysHeader.height,homeHeader.y+homeHeader.height,'Divider stays aligned across views');

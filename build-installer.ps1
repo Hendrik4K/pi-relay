@@ -1,4 +1,4 @@
-﻿param([string]$Compiler='', [string]$ReleaseDirectory='release-next', [string]$Version='1.7.48')
+﻿param([string]$Compiler='', [string]$ReleaseDirectory='release-next', [string]$Version='1.7.50')
 $ErrorActionPreference='Stop'
 if(-not $Compiler){
     $taskLocal=Join-Path (Split-Path $PSScriptRoot -Parent) '.tools\inno\ISCC.exe'

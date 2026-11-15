@@ -268,6 +268,8 @@ export function App() {
   <div className="panel-viewport" data-collapsing={collapsing} style={{height:panelHeight+'px'}}>
    <section className="relay" aria-label="Pi Relay" data-testid="relay-panel">
     <div className="ambient-gradient" aria-hidden="true"/>
+    {/* While Windows asks for the security key, the panel steps back in the tone of that Windows dialog. */}
+    <div className={'key-veil '+(data.windowsTheme==='light'?'light':'dark')+(data.profiles.some(p=>p.state==='key')?' show':'')} role="status" aria-hidden={!data.profiles.some(p=>p.state==='key')}><span className="key-veil-icon"><Key size={30}/></span><strong>Bestätige deinen Sicherheitsschlüssel</strong><span>im Windows-Fenster</span></div>
     <div className="panel-content">
      <header className="app-header" onMouseDown={e=>{if(e.button===0&&native&&e.target.closest('button')===null)request('drag');}}>
       <div className="brand">

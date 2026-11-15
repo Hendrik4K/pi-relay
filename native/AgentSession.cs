@@ -174,6 +174,8 @@ public sealed class SharedSession : IDisposable {
   foreach(var entry in pending.Values)entry.TrySetException(new IOException("SSH-Verbindung beendet"));pending.Clear();
   try{if(owner is {HasExited:false})owner.Kill(true);}catch{}owner?.Dispose();
  }
+ // A login the user gave up on (security key dialog cancelled, ssh still waiting): end it so a new one can start.
+ public void CancelLogin(){if(State is "connecting" or "key")welcome?.TrySetException(new IOException("Anmeldung abgebrochen."));}
  public void Dispose(){Stop();State="disconnected";TerminalState?.Invoke("Verbindung getrennt.");changed();}
 }
 

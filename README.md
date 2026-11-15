@@ -63,7 +63,7 @@ Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. HD
 </details>
 
 <details>
-<summary><b>🔎 Extra-Bilder zum Panel</b></summary>
+<summary><b>📷 Mehr Bilder</b></summary>
 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
 
@@ -139,7 +139,7 @@ Ein zweiter Zugang namens `Ersatzzugang` (z. B. mit einem Ersatzschlüssel) wird
 </details>
 
 <details>
-<summary><b>🔒 Technik und Sicherheit</b></summary>
+<summary><b>⚡ Technik und Sicherheit</b></summary>
 
 **So funktioniert's**
 

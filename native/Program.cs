@@ -74,6 +74,7 @@ public sealed class RelayWindow : Window {
  private readonly List<EventRow> events=[];
  private List<Profile> profiles=[];private List<PublicKey> keys=[];private SavedState saved=new();
  private readonly System.Windows.Threading.DispatcherTimer timer=new(){Interval=TimeSpan.FromSeconds(2)};
+ private SharedSession? authenticatingSession;
  private bool ready,exiting,refreshing,authenticating,revealRequested,collapsing,revealing;
  private readonly System.Windows.Threading.DispatcherTimer revealTimer=new(){Interval=TimeSpan.FromMilliseconds(1200)};
  // Fallback only: the renderer reports the real end of its slide (hideComplete/revealComplete).
@@ -189,7 +190,9 @@ public sealed class RelayWindow : Window {
  // Diagnostics only: a locked status.json (e.g. read by a script) must never end the app.
  private void WriteStatus(){try{WriteStatusFile();}catch(IOException){}catch(UnauthorizedAccessException){}}
  private void WriteStatusFile(){File.WriteAllText(Path.Combine(dataFolder,"status.json"),Json.Encode(new{ready,pid=Environment.ProcessId,started,profiles=profiles.Count,keys=keys.Count,panelVisible=IsVisible,windowState=WindowState.ToString(),rounded,outline,panelTargetHeight,resizing=resizeTimer.IsEnabled,hideClipFrames,hideMaxOffset,hideClipsApplied,bottom=Top+ActualHeight,workAreaBottom=SystemParameters.WorkArea.Bottom,width=ActualWidth,height=ActualHeight,webWidth=web.ActualWidth,webHeight=web.ActualHeight,surface}));}
- private object Snapshot()=>new {version=typeof(RelayWindow).Assembly.GetName().Version?.ToString(3),screens=screens.Keys,icons=icons.Snapshot(),devices=saved.Devices,reachability=reachability.Snapshot(),vncServers,integrated=integratedViewer.Snapshot(connections.Values.Any(c=>c.IsReady)),profiles,keys,settings=saved.Settings,panel=new{visible=IsVisible&&Opacity>0,collapsing,revealing},viewer=viewerUpdates.Snapshot(),agents=agents.ToDictionary(x=>x.Key,x=>new{saved.Agents[x.Key].Alias,saved.Agents[x.Key].Root,saved.Agents[x.Key].AllowCommands,saved.Agents[x.Key].AllowWrite,state=x.Value.VisibleState}),events=events.TakeLast(80)};
+ // The Windows app mode (dark/light) decides the tone of the veil shown while Windows asks for the security key.
+ private static string WindowsTheme(){try{using var key=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");return key?.GetValue("AppsUseLightTheme") is int light&&light==1?"light":"dark";}catch{return "dark";}}
+ private object Snapshot()=>new {version=typeof(RelayWindow).Assembly.GetName().Version?.ToString(3),windowsTheme=WindowsTheme(),screens=screens.Keys,icons=icons.Snapshot(),devices=saved.Devices,reachability=reachability.Snapshot(),vncServers,integrated=integratedViewer.Snapshot(connections.Values.Any(c=>c.IsReady)),profiles,keys,settings=saved.Settings,panel=new{visible=IsVisible&&Opacity>0,collapsing,revealing},viewer=viewerUpdates.Snapshot(),agents=agents.ToDictionary(x=>x.Key,x=>new{saved.Agents[x.Key].Alias,saved.Agents[x.Key].Root,saved.Agents[x.Key].AllowCommands,saved.Agents[x.Key].AllowWrite,state=x.Value.VisibleState}),events=events.TakeLast(80)};
  // While the panel is hidden nobody sees the state, so it isn't serialised every tick; every way of showing it pushes first.
  private void Push(){if(!Dispatcher.CheckAccess()){Dispatcher.BeginInvoke(new Action(Push));return;}foreach(var profile in profiles){var connection=connections.GetValueOrDefault(profile.Alias);profile.State=waitingFor.ContainsKey(profile.Alias)?"waiting":connection?.State=="ready"?"connected":connection?.State??"disconnected";}if(ready&&IsVisible&&Opacity>0)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="state",data=Snapshot()}));UpdateIcon();}
  private void Notice(string message){if(ready)web.CoreWebView2.PostWebMessageAsJson(Json.Encode(new {type="notice",message}));}
@@ -260,6 +263,8 @@ public sealed class RelayWindow : Window {
   if(!profiles.Any(p=>p.Alias==alias))throw new InvalidOperationException("Bekannten SSH-Zugang wählen");
   if(!connections.TryGetValue(alias,out var session)){session=new SharedSession(alias,()=>Dispatcher.BeginInvoke(new Action(Push)));connections[alias]=session;}
   if(session.IsReady){var host=profiles.First(p=>p.Alias==alias).Hostname;if(!saved.Devices.ContainsKey(host))_=LoadDeviceFacts(alias,session);return session;}
+  // Clicking connect again while an earlier key confirmation still hangs (dialog cancelled) ends that attempt and starts fresh.
+  if(authenticating){authenticatingSession?.CancelLogin();for(var i=0;i<100&&authenticating;i++)await Task.Delay(50);}
   if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
   var hostname=profiles.First(p=>p.Alias==alias).Hostname;var waited=false;
   if(reachability.Snapshot().GetValueOrDefault(hostname)=="offline"){await WaitForPi(alias,hostname);waited=true;}
@@ -269,9 +274,9 @@ public sealed class RelayWindow : Window {
  }
  private async Task<SharedSession> Authenticate(string alias,SharedSession session){
   if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
-  authenticating=true;
+  authenticating=true;authenticatingSession=session;
   try{Notice("Verbinde mit "+alias+" … Den Sicherheitsschlüssel bestätigen, sobald Windows danach fragt.");await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);_=LoadVncServer(alias,session);return session;}
-  finally{authenticating=false;Push();}
+  finally{authenticating=false;authenticatingSession=null;Push();}
  }
  private async Task WaitForPi(string alias,string host){
   if(waitingFor.ContainsKey(alias))throw new InvalidOperationException("Pi Relay wartet bereits auf den Pi.");

@@ -63,7 +63,7 @@ Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. No more HDM
 </details>
 
 <details>
-<summary><b>🔎 Extra pictures of the panel</b></summary>
+<summary><b>📷 More pictures</b></summary>
 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: clicking the raspberry icon in the taskbar, menu and management panel"></p>
 
@@ -139,7 +139,7 @@ A second access named `Ersatzzugang` (e.g. with a spare key) is shown as a colla
 </details>
 
 <details>
-<summary><b>🔒 Tech and security</b></summary>
+<summary><b>⚡ Tech and security</b></summary>
 
 **How it works**
 

@@ -410,3 +410,15 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .language-name{position:absolute;top:0;bottom:0;left:13px;display:flex;align-items:center;font:600 12.5px "Segoe UI",sans-serif;pointer-events:none;transition:left .28s cubic-bezier(.3,.75,.3,1)}
 .language-switch.en .language-name{left:37px}
 [data-motion="false"] .language-knob,[data-motion="false"] .language-name,[data-motion="false"] .language-switch{transition:none}
+/* Security key veil: while Windows shows its key dialog the panel fades back in that dialog's tone
+   (dark or light, following the Windows app mode), with a short hint in the middle. */
+.key-veil{position:absolute;inset:0;z-index:30;border-radius:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;opacity:0;pointer-events:none;transition:opacity .35s ease;backdrop-filter:blur(3px) saturate(.35)}
+.key-veil.show{opacity:1;pointer-events:auto}
+.key-veil.dark{background:rgba(32,32,32,.84);color:#f3f3f3}
+.key-veil.light{background:rgba(243,243,243,.88);color:#1b1b1b}
+.key-veil strong{font:600 16px "Segoe UI",sans-serif}
+.key-veil span:last-child{font:13px "Segoe UI",sans-serif;opacity:.75}
+.key-veil-icon{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.key-veil.dark .key-veil-icon{background:#2d2d2d;box-shadow:0 0 0 1px #ffffff1a}
+.key-veil.light .key-veil-icon{background:#ffffff;box-shadow:0 0 0 1px #0000001a}
+[data-motion="false"] .key-veil{transition:none}
