@@ -13,7 +13,7 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
 <details>
-<summary><b>🚀 Schnellstart</b></summary>
+<summary><h2>🚀 Schnellstart</h2></summary>
 
 1. Den Installer unter **Releases** (rechts) herunterladen und starten. Er installiert nur für dich, ohne Adminrechte. Meldet Windows SmartScreen „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen** (der Installer ist nicht code-signiert).
 2. Deinen Pi wie unter **Voraussetzungen** in die SSH-Konfiguration eintragen.
@@ -21,9 +21,6 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 4. Bildschirm-Symbol für den Pi-Desktop, `>_` für das Terminal. Fertig.
 
 **Du bist ein entspannter Typ oder ein entspanntes Girl?** Dann gib einfach diesen Prompt an deinen KI-Agenten (z. B. Claude Code oder Codex auf deinem PC). Er findet heraus, was schon installiert ist, was noch fehlt und wie dein Pi im Netz heißt, und fragt dich bei allem, was er ändern will.
-
-<details>
-<summary><i>Prompt zum Ausklappen:</i> Hilf mir, Pi Relay (github.com/Hendrik4K/pi-relay) auf diesem Windows-PC einzurichten, damit ich meinen Raspberry Pi ohne Monitor nutzen kann. Prüfe zuerst nur und frag mich vor jeder Änderung: …</summary>
 
 ```text
 Hilf mir, Pi Relay (github.com/Hendrik4K/pi-relay) auf diesem Windows-PC einzurichten, damit ich meinen Raspberry Pi ohne Monitor nutzen kann.
@@ -37,8 +34,6 @@ Prüfe zuerst nur und frag mich vor jeder Änderung:
 7. Sag mir am Ende, wie ich Pi Relay über die Himbeere in der Taskleiste öffne und mich verbinde.
 ```
 
-</details>
-
 **Selbst bauen (für Bastler):** Du brauchst das .NET 10 SDK, Node.js 22 oder neuer und für den Installer Inno Setup 6. Dann im Projektordner:
 
 ```bash
@@ -51,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 </details>
 
 <details>
-<summary><b>💡 Was es kann</b></summary>
+<summary><h3>💡 Was es kann</h3></summary>
 
 Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. Du kannst zu 100 % auf HDMI-Kabel verzichten und hast trotzdem einen smarten, flüssigen Zugriff auf deinen Pi.
 

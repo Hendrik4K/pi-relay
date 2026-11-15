@@ -15,7 +15,7 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 *Heads-up: the app itself speaks German.*
 
 <details>
-<summary><b>🚀 Quickstart</b></summary>
+<summary><h2>🚀 Quickstart</h2></summary>
 
 1. Download the installer under **Releases** (on the right) and run it. It installs for you only, no admin rights. If Windows SmartScreen says "Windows protected your PC": **More info → Run anyway** (the installer isn't code-signed).
 2. Add your Pi to the SSH configuration as shown under **Requirements**.
@@ -23,9 +23,6 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 4. Screen icon for the Pi desktop, `>_` for the terminal. Done.
 
 **Laid-back type?** Then just hand this prompt to your AI agent (e.g. Claude Code or Codex on your PC). It finds out what's already installed, what's missing and what your Pi is called on the network, and asks you before every change.
-
-<details>
-<summary><i>Prompt, click to expand:</i> Help me set up Pi Relay (github.com/Hendrik4K/pi-relay) on this Windows PC so I can use my Raspberry Pi without a monitor. Check first and ask me before every change: …</summary>
 
 ```text
 Help me set up Pi Relay (github.com/Hendrik4K/pi-relay) on this Windows PC so I can use my Raspberry Pi without a monitor.
@@ -39,8 +36,6 @@ Check first and ask me before every change:
 7. Finally tell me how to open Pi Relay from the raspberry in the taskbar and connect.
 ```
 
-</details>
-
 **Build it yourself (for tinkerers):** you need the .NET 10 SDK, Node.js 22 or newer and, for the installer, Inno Setup 6. Then, in the project folder:
 
 ```bash
@@ -53,7 +48,7 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 </details>
 
 <details>
-<summary><b>💡 What it does</b></summary>
+<summary><h3>💡 What it does</h3></summary>
 
 Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can drop HDMI cables completely and still get smart, smooth access to your Pi.
 
