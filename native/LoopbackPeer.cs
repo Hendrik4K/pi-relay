@@ -18,8 +18,12 @@ public static class LoopbackPeer {
  private const int AfInet=2,TcpTableOwnerPidConnections=4,RowSize=24,TokenUserClass=1;
  private const uint ProcessQueryLimitedInformation=0x1000,ErrorInsufficientBuffer=122,TokenQuery=0x0008;
 
- // The process owning the client end of a connection from `client` to our listener on `serverPort`.
+ // The process owning the client end of a connection from `client` to our listener on 127.0.0.1:`serverPort`.
+ // The whole connection must match (both addresses, both ports, established) and exactly one row may match:
+ // another account binding the same port on 127.0.0.2 cannot borrow the viewer's identity.
  public static int? OwnerProcessId(IPEndPoint client,int serverPort){
+  if(!client.Address.Equals(IPAddress.Loopback))return null;
+  var clientAddress=BitConverter.ToInt32(client.Address.GetAddressBytes());var serverAddress=BitConverter.ToInt32(IPAddress.Loopback.GetAddressBytes());
   for(var attempt=0;attempt<4;attempt++){
    var size=0;GetExtendedTcpTable(IntPtr.Zero,ref size,false,AfInet,TcpTableOwnerPidConnections,0);
    var buffer=Marshal.AllocHGlobal(size+4096);size+=4096;
@@ -27,16 +31,17 @@ public static class LoopbackPeer {
     var result=GetExtendedTcpTable(buffer,ref size,false,AfInet,TcpTableOwnerPidConnections,0);
     if(result==ErrorInsufficientBuffer)continue;
     if(result!=0)return null;
-    var rows=Marshal.ReadInt32(buffer);
+    var rows=Marshal.ReadInt32(buffer);int? owner=null;var matches=0;
     for(var i=0;i<rows;i++){
      var row=buffer+4+i*RowSize;
-     if(Port(Marshal.ReadInt32(row,8))==client.Port&&Port(Marshal.ReadInt32(row,16))==serverPort)return Marshal.ReadInt32(row,20);
+     if(Marshal.ReadInt32(row,0)==Established&&Marshal.ReadInt32(row,4)==clientAddress&&Port(Marshal.ReadInt32(row,8))==client.Port&&Marshal.ReadInt32(row,12)==serverAddress&&Port(Marshal.ReadInt32(row,16))==serverPort){owner=Marshal.ReadInt32(row,20);matches++;}
     }
-    return null;
+    return matches==1?owner:null;
    }finally{Marshal.FreeHGlobal(buffer);}
   }
   return null;
  }
+ private const int Established=5;
  // Ports are stored in network byte order in the low 16 bits.
  private static int Port(int raw)=>((raw&0xFF)<<8)|((raw>>8)&0xFF);
 

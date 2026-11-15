@@ -104,12 +104,11 @@ const QUALITY_KEY='piRelay.screenQuality',QUALITY_OPTIMUM=7;
 // Waits before each automatic reopen; a connection that holds for 10 s starts the count again.
 const RETRY_DELAYS=[1000,2000,5000,10000,10000];
 // FPS colour: yellow up to 20, green from 30, blended in between; grey while the Pi sends nothing.
-// FPS shown: mean of the last 30 active seconds (≥10 frames), with a calm swing of about ±3 around it.
-// Idle seconds (the Pi sends nothing new) and dips are left out, so the value stays put in the background.
+// FPS shown: while the picture moves (≥10 painted frames per second) the live value. When the Pi goes
+// quiet, the mean of the last 30 active seconds stays up with a calm swing of about ±3 instead of a drop.
 const FPS_WINDOW=30,FPS_ACTIVE=10;
 export function shownFps(samples,n,tick){
- const before=samples.length?samples.reduce((a,b)=>a+b,0)/samples.length:0;
- if(n>=FPS_ACTIVE&&n>=before*.6){samples.push(n);if(samples.length>FPS_WINDOW)samples.shift();}
+ if(n>=FPS_ACTIVE){samples.push(n);if(samples.length>FPS_WINDOW)samples.shift();return n;}
  if(!samples.length)return n;
  const mean=samples.reduce((a,b)=>a+b,0)/samples.length,swing=1.7*Math.sin(tick*.9)+1.1*Math.sin(tick*2.3+1);
  return Math.max(1,Math.round(mean+swing));
@@ -135,7 +134,7 @@ export function ScreenView(){
  const retry=useRef({attempt:0,timer:0,steady:0}),[retrying,setRetrying]=useState(0);
  // While the Pi desktop stands still TigerVNC sends next to nothing; the display then keeps the last
  // rate measured during real activity (10+ updates/s) and goes live again as soon as things move.
- const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0),fpsSamples=useRef([]);
+ const [showFps,setShowFps]=useState(false),[fps,setFps]=useState(null),frames=useRef(0),fpsSamples=useRef([]),changed=useRef(false);
  // Connection bar under the Pi name: from 1 px below the baseline down to the depth of a descender.
  const hostRef=useRef(null),[hostBar,setHostBar]=useState(null);
  const scaleRef=useRef(scale),statusRef=useRef(status),qualityRef=useRef(quality),fullscreenRef=useRef(fullscreen);scaleRef.current=scale;statusRef.current=status;qualityRef.current=quality;fullscreenRef.current=fullscreen;share.current=shareClipboard;
@@ -160,8 +159,9 @@ export function ScreenView(){
   const pipe=new RelayChannel();channel.current=pipe;
   const client=new RFB(host.current,pipe,credentials.current?{credentials:credentials.current}:{});
   rfb.current=client;
-  // Each finished framebuffer update ends in one flip: counted for the optional FPS display.
-  try{const display=client._display,flip=display.flip.bind(display);display.flip=(...a)=>{frames.current++;return flip(...a);};}catch{}
+  // A flip marks the picture as changed; the FPS display (only while switched on) counts screen refreshes
+  // that show a change. (Counting flips alone gave ~200/s, since every small cursor update ends in a flip.)
+  try{const display=client._display,flip=display.flip.bind(display);display.flip=(...a)=>{changed.current=true;return flip(...a);};}catch{}
   client.scaleViewport=scaleRef.current==='fit';client.resizeSession=false;client.clipViewport=false;client.focusOnClick=true;client.showDotCursor=true;client.background='#17151a';client.qualityLevel=qualityRef.current;client.compressionLevel=2;
   client.addEventListener('connect',()=>{if(rfb.current!==client)return;setWaitSeconds(0);setRetrying(0);setStatus('connected');statusRef.current='connected';setMessage('');client.focus();setTimeout(requestFit,120);send('screenInfo');micRef.current.resume();if(share.current)send('screenClipboardRead',{reason:'sync'});
    clearTimeout(retry.current.steady);retry.current.steady=setTimeout(()=>{retry.current.attempt=0;},10000);});
@@ -202,7 +202,9 @@ export function ScreenView(){
     if(failed){send('screenUploadCancel',{token});skipped.push(file.name+': '+failed);}
    }
   }finally{transferring.current=false;setTransfer(null);}
-  if(saved.length&&rfb.current){const paths=saved.join(String.fromCharCode(10));lastClipboard.current=paths;rfb.current.clipboardPasteFrom(paths);}
+  // Paths with shell characters are single-quoted: pasted into a Pi terminal, a name like "$(…).pdf" stays a
+  // name and never runs. Plain names (spaces included) stay as they are for file dialogs.
+  if(saved.length&&rfb.current){const paths=saved.map(p=>/[$`;|&<>()\\"'!*?{}[\]#]/.test(p)?"'"+p.replace(/'/g,"'\\''")+"'":p).join(String.fromCharCode(10));lastClipboard.current=paths;rfb.current.clipboardPasteFrom(paths);}
   if(saved.length)flash((saved.length===1?'Datei liegt':saved.length+' Dateien liegen')+' auf dem Pi-Desktop. Der Pfad ist in der Pi-Zwischenablage.'+(skipped.length?' Nicht übertragen: '+skipped.join(', '):''));
   else if(skipped.length)flash('Nicht übertragen: '+skipped.join(', '));
  }
@@ -247,7 +249,9 @@ export function ScreenView(){
  const hostName=meta.host||(meta.desktop||'').replace(/:\d+$/,'')||'Pi-Bildschirm';
  useLayoutEffect(()=>{const el=hostRef.current,probe=el?.querySelector('.screen-host-probe');if(!probe)return;const size=parseFloat(getComputedStyle(el).fontSize)||16;setHostBar({top:probe.offsetTop+1,height:Math.max(2,Math.round(size*0.25)-1)});},[hostName,fullscreen]);
  useEffect(()=>{if(rfb.current)rfb.current.scaleViewport=scale==='fit';},[scale]);
- useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;fpsSamples.current=[];let tick=0;const t=setInterval(()=>{const n=frames.current;frames.current=0;setFps(shownFps(fpsSamples.current,n,tick++));},1000);return()=>clearInterval(t);},[showFps,status]);
+ useEffect(()=>{if(!showFps||status!=='connected'){setFps(null);return;}frames.current=0;fpsSamples.current=[];changed.current=false;let tick=0,raf=0;
+  const paint=()=>{if(changed.current){changed.current=false;frames.current++;}raf=requestAnimationFrame(paint);};raf=requestAnimationFrame(paint);
+  const t=setInterval(()=>{const n=frames.current;frames.current=0;setFps(shownFps(fpsSamples.current,n,tick++));},1000);return()=>{clearInterval(t);cancelAnimationFrame(raf);};},[showFps,status]);
  useEffect(()=>{if(rfb.current)rfb.current.qualityLevel=quality;try{localStorage.setItem(QUALITY_KEY,String(quality));}catch{}},[quality]);
  useEffect(()=>{
   // F11 is the viewer's own shortcut; everything else goes to the Pi desktop.

@@ -25,12 +25,14 @@ const {chromium}=load('playwright');
   await page.getByRole('heading',{name:'Pi Relay',exact:true}).waitFor();
   assert.equal(await page.locator('.native-stage').count(),1);
   assert.equal(await page.locator('.brand div>span').first().innerText(),'MANAGEMENTZENTRALE','Home subtitle');
-  // Resting 5 s on a picture reveals "Icon ändern"; own pictures come from the user icon host and can be reset.
-  await page.locator('.device .icon-slot').hover();await page.waitForTimeout(2000);
-  assert.equal(await page.locator('.device .icon-slot.shown').count(),0,'Not shown before 5 s');
-  await page.waitForTimeout(3300);
+  // Resting on a picture draws the ring for 2 s, then "PNG ändern"; own pictures come from the user icon host and can be reset.
+  await page.locator('.device .icon-slot').hover();await page.waitForTimeout(900);
+  assert.equal(await page.locator('.device .icon-slot.arming').count(),1,'Ring draws while hovering');
+  assert.equal(await page.locator('.device .icon-slot.shown').count(),0,'Button not shown before 2 s');
+  await page.waitForTimeout(1500);
+  assert.equal(await page.locator('.device .icon-edit-main').innerText(),'PNG ändern');
   await page.locator('.device .icon-edit-main').click();
-  assert(await page.evaluate(()=>window.__relayMessages.some(m=>m.action==='pickIcon'&&m.slot==='device')),'Icon ändern asks the host for a picture');
+  assert(await page.evaluate(()=>window.__relayMessages.some(m=>m.action==='pickIcon'&&m.slot==='device')),'PNG ändern asks the host for a picture');
   await page.evaluate(()=>{window.__relayState.icons={codex:42};window.__relaySend({type:'state',data:window.__relayState});});
   await page.waitForFunction(()=>document.querySelector('[data-companion=codex] img')?.src.startsWith('https://pi-relay-icons.local/codex.png?v=42'));
   assert.equal(await page.locator('.agent.codex .icon-edit-reset').count(),1,'Own picture offers Standard');

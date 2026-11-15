@@ -29,6 +29,7 @@ public sealed class TerminalWindow : Window {
   web.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;web.CoreWebView2.Settings.AreDevToolsEnabled=false;web.CoreWebView2.Settings.IsStatusBarEnabled=false;
   web.CoreWebView2.NavigationStarting+=(_,e)=>{if(!e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))e.Cancel=true;};
   web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;web.CoreWebView2.DownloadStarting+=(_,e)=>e.Cancel=true;
+  web.CoreWebView2.PermissionRequested+=(_,e)=>{e.SavesInProfile=false;e.State=CoreWebView2PermissionState.Deny;};
   web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{
    using var doc=JsonDocument.Parse(e.WebMessageAsJson);var r=doc.RootElement;
    switch(r.GetProperty("action").GetString()){

@@ -72,8 +72,9 @@ public sealed class ScreenWindow : Window {
   settings.AreBrowserAcceleratorKeysEnabled=false;
   web.CoreWebView2.NavigationStarting+=(_,e)=>{if(!e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))e.Cancel=true;};
   web.CoreWebView2.NewWindowRequested+=(_,e)=>e.Handled=true;web.CoreWebView2.DownloadStarting+=(_,e)=>e.Cancel=true;
-  // Only the bundled viewer page may use the microphone (for the "Mikro" switch); nothing else.
-  web.CoreWebView2.PermissionRequested+=(_,e)=>e.State=e.PermissionKind==CoreWebView2PermissionKind.Microphone&&e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase)?CoreWebView2PermissionState.Allow:CoreWebView2PermissionState.Deny;
+  // Only the bundled viewer page may use the microphone (for the "Mikro" switch); nothing else. The grant is
+  // not stored in the shared profile, so the panel and terminal pages never inherit it.
+  web.CoreWebView2.PermissionRequested+=(_,e)=>{e.SavesInProfile=false;e.State=e.PermissionKind==CoreWebView2PermissionKind.Microphone&&e.Uri.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase)?CoreWebView2PermissionState.Allow:CoreWebView2PermissionState.Deny;};
   web.CoreWebView2.WebMessageReceived+=async(_,e)=>{if(!e.Source.StartsWith("https://pi-relay.local/",StringComparison.OrdinalIgnoreCase))return;try{await Handle(e.WebMessageAsJson);}catch(Exception ex){Post(new{type="screenNotice",message=ex.Message});}};
   web.NavigationCompleted+=(_,e)=>{ready=e.IsSuccess;};
   web.Source=new Uri("https://pi-relay.local/index.html?screen="+Uri.EscapeDataString(Alias));
@@ -103,14 +104,23 @@ public sealed class ScreenWindow : Window {
   case "screenClipboardWrite":{var text=r.GetProperty("text").GetString()??"";if(text.Length>1048576)throw new IOException("Zwischenablage zu groß");
    if(!settings().ClipboardFromPi||!(IsActive||DateTime.UtcNow-deactivated<TimeSpan.FromSeconds(1)))break;
    SetClipboard(PlainText(text));Post(new{type="screenNotice",message="Text vom Pi in die Windows-Zwischenablage übernommen."});break;}
-  // Windows → Pi: automatically only when enabled and never content a password manager marked private;
-  // "An Pi" stays an explicit choice.
-  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)?reason.GetString():"manual";var manual=why=="manual";var allowed=manual||settings().ClipboardToPi;var hidden=!manual&&allowed&&PrivateClipboard();var text=allowed&&!hidden?ReadClipboard():"";
+  // Windows → Pi only while this window is in front (the same one-second grace as above): a reconnect while
+  // it is minimised or behind other windows never hands the clipboard over. Automatically only when enabled
+  // and never content a password manager marked private; "An Pi" stays an explicit choice. A message
+  // without a reason counts as automatic, so the page cannot claim the explicit path by leaving it out.
+  case "screenClipboardRead":{var why=r.TryGetProperty("reason",out var reason)&&reason.GetString()=="manual"?"manual":"sync";var manual=why=="manual";
+   var inFront=IsActive||DateTime.UtcNow-deactivated<TimeSpan.FromSeconds(1);
+   var allowed=inFront&&(manual||settings().ClipboardToPi);var hidden=!manual&&allowed&&PrivateClipboard();var text=allowed&&!hidden?ReadClipboard():"";
+   var tooBig=text.Length>ClipboardLimit;if(tooBig)text="";
    // Only the decision and the length are logged, never the content.
-   log("Zwischenablage → Pi ("+(manual?"„An Pi“":"automatisch")+"): "+(!allowed?"aus (Einstellung)":hidden?"übersprungen, vertraulich markiert":text==""?"kein Text in der Windows-Zwischenablage":"übergeben, "+text.Length+" Zeichen"));
+   log("Zwischenablage → Pi ("+(manual?"„An Pi“":"automatisch")+"): "+(!inFront?"übersprungen, Fenster nicht im Vordergrund":!allowed?"aus (Einstellung)":hidden?"übersprungen, vertraulich markiert":tooBig?"übersprungen, größer als 1 MiB":text==""?"kein Text in der Windows-Zwischenablage":"übergeben, "+text.Length+" Zeichen"));
+   if(tooBig&&manual)Post(new{type="screenNotice",message="Die Windows-Zwischenablage ist größer als 1 MiB und wird nicht übertragen."});
    Post(new{type="screenClipboardText",text,reason=why});break;}
  }}
- internal static string PlainText(string text)=>string.Concat(text.Where(c=>!char.IsControl(c)||c is '\t' or '\n' or '\r'));
+ private const int ClipboardLimit=1048576;
+ // Pi → Windows: plain text without control characters, bidi overrides or a trailing line break (pasted
+ // into a console, a trailing newline would run the line at once).
+ internal static string PlainText(string text)=>string.Concat(text.Where(c=>(!char.IsControl(c)||c is '\t' or '\n' or '\r')&&!(c is >='‪' and <='‮' or >='⁦' and <='⁩' or '‎' or '‏' or '؜'))).TrimEnd('\r','\n');
  private static void SetClipboard(string text){for(var attempt=0;;attempt++){try{System.Windows.Clipboard.SetText(text);return;}catch(System.Runtime.InteropServices.COMException)when(attempt<3){Thread.Sleep(40);}}}
  // Password managers flag copied secrets (KeePass, Bitwarden, 1Password, Windows clipboard history).
  // Such content reaches the Pi only through an explicit "An Pi", never through the automatic sync.

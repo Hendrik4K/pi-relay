@@ -26,6 +26,7 @@ public static class Program {
   ScreenWindow Open(){var w=new ScreenWindow("MeinPi",Ensure){WindowStartupLocation=WindowStartupLocation.Manual,Left=-20000,Top=-20000,ShowInTaskbar=false,ShowActivated=false};w.Show();return w;}
   try{
    Require(ScreenWindow.PlainText("a\u0007b\tc\r\nd\u001b[31m\u0085e")=="ab\tc\r\nd[31me","Pi text loses control characters, keeps tabs and line breaks");
+   Require(ScreenWindow.PlainText("rm ‮gnp.txt\r\n")=="rm gnp.txt","Pi text loses bidi overrides and a trailing line break");
    var first=Open();
    try{await Until(()=>frames>0&&incremental>0,"noVNC in WebView2 receives the frame and asks for the next update",45000);}
    catch{var web=(Microsoft.Web.WebView2.Wpf.WebView2)typeof(ScreenWindow).GetField("web",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance)!.GetValue(first)!;

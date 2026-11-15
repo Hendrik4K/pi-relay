@@ -241,6 +241,8 @@ const {chromium}=load('playwright');
   await agentPage.getByText('Dateien ändern erlauben').click();
   await agentPage.locator('.field-hint').waitFor();assert(await grant.isDisabled(),'Home folder with write rights cannot be saved');
   await folder.fill('/');assert((await agentPage.locator('.field-hint').innerText()).includes('„/“'));
+  await folder.fill('/home');assert((await agentPage.locator('.field-hint').innerText()).includes('darüber'),'A folder above home is refused with write rights');
+  await folder.fill('/home/pi/.config');assert((await agentPage.locator('.field-hint').innerText()).includes('~/.config'),'Hidden folder with write rights needs commands');
   await folder.fill('/home/pi/Desktop/Claude');
   assert.equal(await agentPage.locator('.field-hint').count(),0);assert(await grant.isEnabled(),'A subfolder can be saved');
   await agentPage.close();

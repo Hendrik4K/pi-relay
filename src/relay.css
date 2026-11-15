@@ -191,7 +191,15 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 /* Own pictures: a small action fades in above a picture after resting on it for 5 s. */
 .icon-slot{position:relative;display:inline-flex;flex-shrink:0}.icon-edit{position:absolute;left:50%;bottom:calc(100% - 4px);transform:translate(-50%,4px);display:flex;gap:5px;opacity:0;pointer-events:none;transition:opacity .3s ease,transform .3s ease;z-index:6;white-space:nowrap}
 .icon-slot.shown .icon-edit{opacity:1;transform:translate(-50%,0);pointer-events:auto}.icon-edit button{font:600 11px 'Segoe UI Variable','Segoe UI',sans-serif;color:#fff;background:#352638f2;border:1px solid #d0577a88;border-radius:7px;padding:4px 9px;box-shadow:0 6px 18px #0006}.icon-edit button:hover{background:#4a2b3c}.icon-edit .icon-edit-reset{color:#d8c9d4;border-color:#ffffff22}
-[data-motion=false] .icon-edit{transition:none}@media(prefers-reduced-motion:reduce){.icon-edit{transition:none}}
+/* Hover ring: draws itself once around the picture, fading in slowly; when closed it gives way to a grey "PNG ändern" button on the picture. */
+.icon-ring{position:absolute;inset:-7px;width:calc(100% + 14px);height:calc(100% + 14px);pointer-events:none;transform:rotate(-90deg);overflow:visible;z-index:5}
+.icon-ring circle{fill:none;stroke:#a59dac;stroke-width:3;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0;transition:stroke-dashoffset .35s ease,opacity .35s ease}
+.icon-slot.arming .icon-ring circle{stroke-dashoffset:0;opacity:.85;transition:stroke-dashoffset 2s cubic-bezier(.5,0,.3,1),opacity 2s cubic-bezier(.75,0,.85,.45)}
+.icon-slot.shown .icon-ring circle{stroke-dashoffset:0;opacity:.3;transition:opacity .35s ease}
+.icon-slot .icon-edit{top:50%;bottom:auto;transform:translate(-50%,-50%) scale(.85)}
+.icon-slot.shown .icon-edit{transform:translate(-50%,-50%) scale(1)}
+.icon-slot .icon-edit button{background:#3b3740f0;border-color:#ffffff30;color:#f1edf3}.icon-slot .icon-edit button:hover{background:#4c4752}
+[data-motion=false] .icon-edit,[data-motion=false] .icon-ring circle{transition:none!important}@media(prefers-reduced-motion:reduce){.icon-edit,.icon-ring circle{transition:none!important}}
 /* Waiting for a restarting Pi: amber like connecting; hover offers cancelling the wait. */
 .device-state.connectable.waiting{color:#e9bd85}.device-state.connectable.waiting i{background:#dba45f}.device-state.connectable.waiting:hover i{background:#bdb0c0}
 

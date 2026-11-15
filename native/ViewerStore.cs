@@ -15,13 +15,16 @@ public sealed class ViewerStore {
  public ViewerManifest Manifest {get;private set;}=new();
  public ViewerStore(string root,Func<bool> running){
   this.root=Path.GetFullPath(root);this.running=running;Directory.CreateDirectory(this.root);
-  var file=Path.Combine(this.root,"viewer.json");
-  if(File.Exists(file))Manifest=Json.Decode<ViewerManifest>(File.ReadAllText(file))??throw new IOException("Viewer-Konfiguration ist ungültig");
+  // A damaged viewer.json must not keep Pi Relay from starting: the external viewer is then simply not set up.
+  try{if(Reload())return;}catch(Exception e) when(e is IOException or JsonException or UnauthorizedAccessException){Manifest=new();}
  }
- public string? CurrentPath=>Manifest.Current is {} current?Resolve(current):null;
+ public string? CurrentPath{get{try{return Manifest.Current is {} current?Resolve(current):null;}catch(IOException){return null;}}}
  public string? PreviousVersion=>Manifest.Previous?.Version;
+ private DateTime readStamp;
+ // Called every tick: the file is parsed again only after it changed on disk.
  public bool Reload(){
   var file=Path.Combine(root,"viewer.json");if(!File.Exists(file))return false;
+  var stamp=File.GetLastWriteTimeUtc(file);if(stamp==readStamp)return false;readStamp=stamp;
   var next=Json.Decode<ViewerManifest>(File.ReadAllText(file))??throw new IOException("Viewer-Konfiguration ist ungültig");
   foreach(var item in new[]{next.Current,next.Previous,next.Pending})if(item!=null)Resolve(item);
   if(Json.Encode(next)==Json.Encode(Manifest))return false;
@@ -65,6 +68,7 @@ public sealed class ViewerStore {
  }
  private void Commit(ViewerManifest next){
   var file=Path.Combine(root,"viewer.json");var temp=file+"."+Guid.NewGuid().ToString("N")+".tmp";
-  try{File.WriteAllText(temp,Json.Encode(next));File.Move(temp,file,true);Manifest=next;}finally{if(File.Exists(temp))File.Delete(temp);}
+  // Flushed to disk before the swap, so a power cut cannot leave an empty viewer.json behind.
+  try{using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){stream.Write(System.Text.Encoding.UTF8.GetBytes(Json.Encode(next)));stream.Flush(true);}File.Move(temp,file,true);Manifest=next;readStamp=File.GetLastWriteTimeUtc(file);}finally{if(File.Exists(temp))File.Delete(temp);}
  }
 }

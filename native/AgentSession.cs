@@ -46,7 +46,8 @@ public sealed class SharedSession : IDisposable {
    lock(historyLock){history.Clear();historySize=0;}
    using var resource=typeof(SharedSession).Assembly.GetManifestResourceStream("PiRelay.remote_worker.py")??throw new IOException("SSH-Worker fehlt");
    using var reader=new StreamReader(resource);var code=await reader.ReadToEndAsync();
-   var bootstrap="import base64;exec(base64.b64decode("+Quote(Convert.ToBase64String(Encoding.UTF8.GetBytes(code)))+"))";
+   // Compressed: the worker travels on the ssh command line, which Windows limits to 32,767 characters.
+   var bootstrap="import base64,zlib;exec(zlib.decompress(base64.b64decode("+Quote(Convert.ToBase64String(Deflate(Encoding.UTF8.GetBytes(code))))+")))";
    // -I: no imports from the home folder or user site-packages, no PYTHON* variables.
    var command="python3 -I -u -c "+Quote(bootstrap);
    // Screen data is already compressed (JPEG/zlib); SSH compression would only add delay. Forwardings
@@ -73,8 +74,8 @@ public sealed class SharedSession : IDisposable {
       case "terminal_output":var data=value.GetProperty("data").GetString()!;var bytes=Convert.FromBase64String(data);lock(historyLock){history.Enqueue(bytes);historySize+=bytes.Length;while(historySize>262144&&history.Count>1)historySize-=history.Dequeue().Length;}TerminalOutput?.Invoke(data);break;
       case "terminal_exit":TerminalState?.Invoke("Shell beendet. Über das Terminal-Symbol erneut öffnen.");break;
       // Raw screen bytes follow the header; they are always consumed so the stream stays aligned.
-      case "tcp_data":{var size=value.GetProperty("size").GetInt32();if(size<0||size>WorkerOutput.MaxBlock)throw new IOException("Antwort zu groß");var queue=SocketChannel(value.GetProperty("channel").GetInt32());if(!queue.Writer.TryWrite(await output.ReadBytes(size)))queue.Writer.TryComplete(new IOException("VNC-Empfänger ist zu langsam"));break;}
-      case "tcp_closed":{var queue=SocketChannel(value.GetProperty("channel").GetInt32());if(value.TryGetProperty("error",out var reason))queue.Writer.TryComplete(new IOException(reason.GetString()));else queue.Writer.TryComplete();break;}
+      case "tcp_data":{var size=value.GetProperty("size").GetInt32();if(size<0||size>WorkerOutput.MaxBlock)throw new IOException("Antwort zu groß");var block=await output.ReadBytes(size);var queue=KnownChannel(value.GetProperty("channel").GetInt32());if(queue!=null&&!queue.Writer.TryWrite(block))queue.Writer.TryComplete(new IOException("VNC-Empfänger ist zu langsam"));break;}
+      case "tcp_closed":{var queue=KnownChannel(value.GetProperty("channel").GetInt32());if(queue==null)break;if(value.TryGetProperty("error",out var reason))queue.Writer.TryComplete(new IOException(reason.GetString()));else queue.Writer.TryComplete();break;}
      }continue;
     }
     if(value.TryGetProperty("id",out var id)&&id.TryGetInt64(out var number)&&pending.TryRemove(number,out var completion))completion.TrySetResult(value.Clone());
@@ -84,11 +85,21 @@ public sealed class SharedSession : IDisposable {
    // Keyword-free ssh failures (e.g. unreachable host) still need a visible reason.
    if(string.IsNullOrEmpty(LastError)){await Task.Delay(200);LastError=lastErrorLine!=""?Explain(lastErrorLine):e.Message;}welcome?.TrySetException(new IOException(LastError));Stop();State="error";TerminalState?.Invoke(LastError);changed();}}
  }
+ internal static byte[] Deflate(byte[] data){using var output=new MemoryStream();using(var zlib=new System.IO.Compression.ZLibStream(output,System.IO.Compression.CompressionLevel.SmallestSize,true))zlib.Write(data);return output.ToArray();}
  internal static string Explain(string sshLine){
   string[] unreachable=["timed out","No route to host","Network is unreachable","Connection refused","Could not resolve hostname"];
   return unreachable.Any(sshLine.Contains)?"Pi nicht erreichbar. Ist er eingeschaltet und im Netz? Sonst die IP neben dem Gerät prüfen. ("+sshLine+")":"SSH-Verbindung beendet: "+sshLine;
  }
  private Channel<byte[]> SocketChannel(int channel)=>sockets.GetOrAdd(channel,_=>Channel.CreateBounded<byte[]>(new BoundedChannelOptions(128){SingleReader=true,FullMode=BoundedChannelFullMode.Wait}));
+ // Data may arrive just before OpenTunnel has registered its channel, so a new number is accepted, but
+ // never one this side already closed (late bytes after a viewer close are dropped instead of piling up),
+ // and never more than a handful of open channels (a Pi cannot make the host hoard memory).
+ private readonly ConcurrentDictionary<int,byte> closedChannels=new();
+ private Channel<byte[]>? KnownChannel(int channel){
+  if(closedChannels.ContainsKey(channel))return null;
+  if(sockets.TryGetValue(channel,out var queue))return queue;
+  return channel>0&&sockets.Count<16?SocketChannel(channel):null;
+ }
  public async Task<JsonElement> Request(string op,object? args=null,AgentConfig? config=null){
   if(!IsReady)throw new InvalidOperationException("SSH-Zugang in Pi Relay zuerst verbinden");
   var id=Interlocked.Increment(ref sequence);var completion=new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);pending[id]=completion;
@@ -152,13 +163,14 @@ public sealed class SharedSession : IDisposable {
   }
  }
  internal static bool Unreachable(string message)=>message.StartsWith("Pi nicht erreichbar",StringComparison.Ordinal);
- internal async Task CloseTunnel(int channel){if(sockets.TryRemove(channel,out var queue))queue.Writer.TryComplete();if(IsReady)try{await Request("tcp_close",new{channel});}catch{}}
- public void Refresh(){if(process is {HasExited:true}&&State=="ready"){Stop();State="error";changed();}}
+ internal async Task CloseTunnel(int channel){closedChannels[channel]=0;if(closedChannels.Count>512)closedChannels.Clear();if(sockets.TryRemove(channel,out var queue))queue.Writer.TryComplete();if(IsReady)try{await Request("tcp_close",new{channel});}catch{}}
+ // The reader thread may stop and dispose the process at the same moment.
+ public void Refresh(){bool exited;try{exited=process is {HasExited:true};}catch(InvalidOperationException){exited=true;}if(exited&&State=="ready"){Stop();State="error";changed();}}
  private void Stop(){
   var owner=process;process=null;
   welcome?.TrySetException(new IOException("Verbindung beendet"));welcome=null;
   tunnelLifetime?.Cancel();tunnelLifetime?.Dispose();tunnelLifetime=null;vnc?.Stop();vnc=null;
-  foreach(var queue in sockets.Values)queue.Writer.TryComplete();sockets.Clear();
+  foreach(var queue in sockets.Values)queue.Writer.TryComplete();sockets.Clear();closedChannels.Clear();
   foreach(var entry in pending.Values)entry.TrySetException(new IOException("SSH-Verbindung beendet"));pending.Clear();
   try{if(owner is {HasExited:false})owner.Kill(true);}catch{}owner?.Dispose();
  }

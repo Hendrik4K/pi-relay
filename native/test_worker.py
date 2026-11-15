@@ -145,6 +145,40 @@ class WorkerTests(unittest.TestCase):
      if v is None:os.environ.pop(k,None)
      else:os.environ[k]=v
 
+ def test_hidden_home_folders_and_credentials(self):
+  with tempfile.TemporaryDirectory() as d:
+   home=Path(d).resolve()/'pi';home.mkdir();(home/'.config'/'app').mkdir(parents=True);(home/'.config'/'app'/'a.txt').write_text('cfg')
+   (home/'.codex').mkdir();(home/'.codex'/'auth.json').write_text('{}');(home/'.bashrc').write_text('x')
+   saved={k:os.environ.get(k) for k in ('HOME','USERPROFILE')};os.environ['HOME']=os.environ['USERPROFILE']=str(home)
+   try:
+    for path in ('.codex/auth.json','.bashrc','.config/app/a.txt'):
+     with self.assertRaises(PermissionError,msg=path):worker.perform({'root':str(home)},{'op':'read','args':{'path':path}})
+    # A hidden folder chosen as the project folder itself stays readable, but not writable without commands.
+    self.assertEqual(worker.perform({'root':str(home/'.config')},{'op':'read','args':{'path':'app/a.txt'}}),'cfg')
+    with self.assertRaises(PermissionError):worker.perform({'root':str(home/'.config'),'allowWrite':True},{'op':'write','args':{'path':'autostart/x.desktop','content':'x'}})
+    worker.perform({'root':str(home/'.config'),'allowWrite':True,'allowCommands':True},{'op':'list','args':{}})
+    # A folder above home (e.g. /home) is refused with write rights.
+    with self.assertRaises(PermissionError):worker.perform({'root':str(home.parent),'allowWrite':True},{'op':'list','args':{}})
+    with self.assertRaises(PermissionError):worker.perform({'root':str(home/'.config')},{'op':'read','args':{'path':'../.codex/auth.json'}})
+   finally:
+    for k,v in saved.items():
+     if v is None:os.environ.pop(k,None)
+     else:os.environ[k]=v
+
+ def test_safe_names_and_reply_encoding(self):
+  self.assertEqual(worker.safe_name('Bericht‮gnp.exe'),'Bericht_gnp.exe')
+  self.assertEqual(worker.safe_name('a\x00b\x7f\u0085c.txt'),'a_b__c.txt')
+  name=worker.safe_name('ä'*300+'.pdf');self.assertTrue(name.endswith('.pdf'));self.assertLessEqual(len(name.encode('utf-8')),200)
+  self.assertNotIn('\x7f',worker.safe_name('x\x7fy'));self.assertEqual(worker.safe_name('../.x'),'_.x')
+  line=worker.encode({'name':'a\udcffb'});json.loads(line.decode('utf-8'))
+  self.assertEqual(worker.show_name('a\udcffb'),'a\\xffb')
+
+ @unittest.skipIf(os.name=='nt','POSIX process groups')
+ def test_command_output_is_capped_and_time_limited(self):
+  result=worker.run_command('head -c 600000 /dev/zero | tr "\\0" a',self.root,seconds=10,cap=1000)
+  self.assertEqual(len(result['stdout']),1000)
+  with self.assertRaises(TimeoutError):worker.run_command('sleep 5 & sleep 5',self.root,seconds=1)
+
  @unittest.skipIf(not hasattr(os,'getuid'),'POSIX uids')
  def test_vnc_listener_owned_by_foreign_user_is_refused(self):
   with tempfile.TemporaryDirectory() as d:

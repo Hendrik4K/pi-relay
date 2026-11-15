@@ -41,28 +41,38 @@ public sealed class LetterMotion:IDisposable {
  }
  // Draws letter by letter at their regular positions (so nothing shifts when the motion ends) plus the offset,
  // as outlines so a letter can swell smoothly (no jump between font weights).
- public void Draw(Graphics g,string text,Font font,Color color,RectangleF area){
-  if(text.Length==0)return;
+ // Letter positions only change with the text, font or size: measured once, not on every 16 ms frame.
+ private static readonly StringFormat Single=new(StringFormat.GenericTypographic){FormatFlags=StringFormatFlags.NoWrap|StringFormatFlags.MeasureTrailingSpaces|StringFormatFlags.NoClip};
+ private string measuredText="";private Font? measuredFont;private SizeF measuredSize;private RectangleF[] boxes=[];
+ private RectangleF[] Boxes(Graphics g,string text,Font font,SizeF size){
+  if(text==measuredText&&ReferenceEquals(font,measuredFont)&&size==measuredSize)return boxes;
   using var format=new StringFormat(StringFormat.GenericTypographic){LineAlignment=StringAlignment.Center,FormatFlags=StringFormatFlags.NoWrap|StringFormatFlags.MeasureTrailingSpaces};
-  using var brush=new SolidBrush(color);var t=clock.Elapsed.TotalSeconds;
-  var emPixels=font.SizeInPoints*g.DpiY/72f;var scale=font.GetHeight(g)/16.9f;var a=(float)Amplitude;
-  var smoothing=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+  var found=new RectangleF[text.Length];
   for(var start=0;start<text.Length;start+=32){
    var count=Math.Min(32,text.Length-start);var ranges=new CharacterRange[count];
    for(var i=0;i<count;i++)ranges[i]=new CharacterRange(start+i,1);
    format.SetMeasurableCharacterRanges(ranges);
-   var regions=g.MeasureCharacterRanges(text,font,area,format);
-   for(var i=0;i<count;i++){
-    using var region=regions[i];var box=region.GetBounds(g);if(box.Width<=0||box.Left>area.Right)continue;
-    var o=Offset(start+i,t,scale);
-    using var single=new StringFormat(StringFormat.GenericTypographic){FormatFlags=StringFormatFlags.NoWrap|StringFormatFlags.MeasureTrailingSpaces|StringFormatFlags.NoClip};
-    using var path=new System.Drawing.Drawing2D.GraphicsPath();
-    path.AddString(text[start+i].ToString(),font.FontFamily,(int)font.Style,emPixels,new PointF(box.Left+o.X,box.Top+o.Y),single);
-    var swell=a*(.75f+.5f*(float)Seed(start+i,5));
-    if(swell>0){using var grow=new System.Drawing.Drawing2D.Matrix();var cx=box.Left+box.Width/2+o.X;var cy=box.Top+box.Height/2+o.Y;var k=1+SwellSize*swell;grow.Translate(cx,cy);grow.Scale(k,k);grow.Translate(-cx,-cy);path.Transform(grow);}
-    g.FillPath(brush,path);
-    if(swell>0){using var pen=new Pen(color,SwellStroke*swell*scale){LineJoin=System.Drawing.Drawing2D.LineJoin.Round};g.DrawPath(pen,path);}
-   }
+   var regions=g.MeasureCharacterRanges(text,font,new RectangleF(PointF.Empty,size),format);
+   for(var i=0;i<count;i++){using var region=regions[i];found[start+i]=region.GetBounds(g);}
+  }
+  measuredText=text;measuredFont=font;measuredSize=size;return boxes=found;
+ }
+ public void Draw(Graphics g,string text,Font font,Color color,RectangleF area){
+  if(text.Length==0)return;
+  using var brush=new SolidBrush(color);var t=clock.Elapsed.TotalSeconds;
+  var emPixels=font.SizeInPoints*g.DpiY/72f;var scale=font.GetHeight(g)/16.9f;var a=(float)Amplitude;
+  var smoothing=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+  var letters=Boxes(g,text,font,area.Size);
+  for(var i=0;i<letters.Length;i++){
+   var box=letters[i];if(box.Width<=0||box.Left>area.Width)continue;
+   box.Offset(area.X,area.Y);
+   var o=Offset(i,t,scale);
+   using var path=new System.Drawing.Drawing2D.GraphicsPath();
+   path.AddString(text[i].ToString(),font.FontFamily,(int)font.Style,emPixels,new PointF(box.Left+o.X,box.Top+o.Y),Single);
+   var swell=a*(.75f+.5f*(float)Seed(i,5));
+   if(swell>0){using var grow=new System.Drawing.Drawing2D.Matrix();var cx=box.Left+box.Width/2+o.X;var cy=box.Top+box.Height/2+o.Y;var k=1+SwellSize*swell;grow.Translate(cx,cy);grow.Scale(k,k);grow.Translate(-cx,-cy);path.Transform(grow);}
+   g.FillPath(brush,path);
+   if(swell>0){using var pen=new Pen(color,SwellStroke*swell*scale){LineJoin=System.Drawing.Drawing2D.LineJoin.Round};g.DrawPath(pen,path);}
   }
   g.SmoothingMode=smoothing;
  }

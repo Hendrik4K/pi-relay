@@ -89,7 +89,8 @@ public sealed class VersionItem:Forms.ToolStripMenuItem {
  // Duration of a full slide, so a caller can wait before the next text.
  public static TimeSpan SlideTime=>TimeSpan.FromMilliseconds(OutMs+InMs);
  private Rectangle UpdateButton=>new(TrayMenu.VisibleWidth(this)-40,(Height-1-26)/2,26,26);
- protected override void OnMouseUp(Forms.MouseEventArgs e){if(ShowUpdate&&UpdateButton.Contains(e.Location)){UpdateClicked?.Invoke();return;}base.OnMouseUp(e);}
+ // Only a left click on the button starts an update; a right click or a click on the text never does.
+ protected override void OnMouseUp(Forms.MouseEventArgs e){if(ShowUpdate&&e.Button==Forms.MouseButtons.Left&&UpdateButton.Contains(e.Location)){UpdateClicked?.Invoke();return;}base.OnMouseUp(e);}
  protected override void OnPaint(Forms.PaintEventArgs e){
   var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.TextRenderingHint=System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
   g.Clear(TrayMenu.Surface);var w=TrayMenu.VisibleWidth(this);
@@ -102,10 +103,11 @@ public sealed class VersionItem:Forms.ToolStripMenuItem {
   else{var t=ms<OutMs+InMs?Ease((ms-OutMs)/InMs):1;Draw(g,text,Glowing(color),area,26*(1-t),t);}
   g.Restore(state);
   if(ShowUpdate){var b=UpdateButton;using var path=TrayMenu.RoundRect(b,8);using var fill=new SolidBrush(Color.FromArgb(70,TrayMenu.Amber));g.FillPath(fill,path);
-   using var icon=IconFont();Forms.TextRenderer.DrawText(g,"",icon,b,TrayMenu.Amber,Forms.TextFormatFlags.HorizontalCenter|Forms.TextFormatFlags.VerticalCenter|Forms.TextFormatFlags.NoPadding);}
+   Forms.TextRenderer.DrawText(g,"",IconFont(),b,TrayMenu.Amber,Forms.TextFormatFlags.HorizontalCenter|Forms.TextFormatFlags.VerticalCenter|Forms.TextFormatFlags.NoPadding);}
  }
  // Refresh glyph: Segoe Fluent Icons on Windows 11, Segoe MDL2 Assets on Windows 10 (same code point).
- private static Font IconFont(){var fluent=new Font("Segoe Fluent Icons",11f);if(fluent.Name=="Segoe Fluent Icons")return fluent;fluent.Dispose();return new Font("Segoe MDL2 Assets",11f);}
+ private static Font? iconFont;
+ private static Font IconFont(){if(iconFont!=null)return iconFont;var fluent=new Font("Segoe Fluent Icons",11f);if(fluent.Name=="Segoe Fluent Icons")return iconFont=fluent;fluent.Dispose();return iconFont=new Font("Segoe MDL2 Assets",11f);}
  private Color Glowing(Color tint){
   if(!glow.IsRunning)return tint;var u=glow.Elapsed.TotalMilliseconds/GlowMs;if(u>=1)return tint;
   var k=Math.Sin(Math.Min(1,u)*Math.PI);k*=k;return Color.FromArgb((int)(tint.R+(TrayMenu.Green.R-tint.R)*k),(int)(tint.G+(TrayMenu.Green.G-tint.G)*k),(int)(tint.B+(TrayMenu.Green.B-tint.B)*k));

@@ -20,6 +20,14 @@ try {
     if ($Version -eq $current -and -not $Force) { Write-Host 'Bereits aktuell. Nichts zu tun.' -ForegroundColor Green; return }
     if ([version]$Version -lt [version]$current) { throw 'Ein Rückschritt auf eine ältere noVNC-Version ist hier nicht vorgesehen.' }
     if (([version]$Version).Major -ne ([version]$current).Major -and -not $AllowMajor) { throw "Neue Hauptversion. Änderungen prüfen (https://github.com/novnc/noVNC/releases) und mit -AllowMajor bestätigen." }
+    # Supply chain: a freshly published release is not taken right away. Hijacked npm releases are usually
+    # found and pulled within days; 14 days of public exposure leave room for that.
+    if ($Version -ne $current) {
+        $published = (Invoke-RestMethod 'https://registry.npmjs.org/@novnc/novnc' -TimeoutSec 30).time.$Version
+        if (-not $published) { throw "Veröffentlichungsdatum von noVNC $Version nicht gefunden." }
+        $age = (Get-Date).ToUniversalTime() - ([datetime]$published).ToUniversalTime()
+        if ($age.TotalDays -lt 14) { throw ("noVNC $Version ist erst {0:N0} Tage alt. Aus Sicherheitsgründen wird eine neue Version frühestens nach 14 Tagen übernommen." -f [math]::Floor($age.TotalDays)) }
+    }
     Write-Host "Änderungen: https://github.com/novnc/noVNC/releases/tag/v$Version"
     $info = Join-Path $root 'release-next\build-info.json'; if (Test-Path -LiteralPath $info) { Remove-Item -LiteralPath $info -Force }
     foreach ($file in $tracked) { $saved[$file] = [IO.File]::ReadAllBytes((Join-Path $root $file)) }
@@ -27,8 +35,11 @@ try {
     $appVersion = ([xml](Get-Content 'native\PiRelay.csproj' -Raw)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
     if ($Version -ne $current) {
         $changed = $true
-        & npm.cmd install --save-exact "@novnc/novnc@$Version"
+        # No install scripts: noVNC needs none, and a compromised package could otherwise run code right here.
+        & npm.cmd install --save-exact --ignore-scripts "@novnc/novnc@$Version"
         if ($LASTEXITCODE -ne 0) { throw 'npm install fehlgeschlagen.' }
+        & npm.cmd audit signatures
+        if ($LASTEXITCODE -ne 0) { throw 'npm-Signaturprüfung der Pakete fehlgeschlagen.' }
         $package = Get-Content 'node_modules\@novnc\novnc\package.json' -Raw | ConvertFrom-Json
         if ($package.version -ne $Version) { throw 'Installierte noVNC-Version stimmt nicht.' }
         if ($package.license -ne 'MPL-2.0') { throw "Lizenz geändert ($($package.license)). Weitergabebedingungen prüfen, bevor das Update übernommen wird." }
@@ -55,7 +66,7 @@ try {
     if ($changed) {
         Write-Host 'Stelle den vorherigen Stand wieder her ...'
         foreach ($file in $saved.Keys) { [IO.File]::WriteAllBytes((Join-Path $root $file), $saved[$file]) }
-        & npm.cmd install --no-audit --no-fund | Out-Null
+        & npm.cmd install --no-audit --no-fund --ignore-scripts | Out-Null
         Write-Host "Projekt wieder auf noVNC $current. Die laufende App wurde nicht verändert."
     }
     exit 1
