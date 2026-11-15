@@ -15,6 +15,44 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 *Heads-up: the app itself speaks German.*
 
 <details>
+<summary><b>🚀 Quickstart</b></summary>
+
+1. Download the installer under **Releases** (on the right) and run it. It installs for you only, no admin rights. If Windows SmartScreen says "Windows protected your PC": **More info → Run anyway** (the installer isn't code-signed).
+2. Add your Pi to the SSH configuration as shown under **Requirements**.
+3. Click the raspberry in the bottom-right taskbar, click your access and confirm your security key.
+4. Screen icon for the Pi desktop, `>_` for the terminal. Done.
+
+**Laid-back type?** Then just hand this prompt to your AI agent (e.g. Claude Code or Codex on your PC). It finds out what's already installed, what's missing and what your Pi is called on the network, and asks you before every change.
+
+<details>
+<summary><i>Prompt, click to expand:</i> Help me set up Pi Relay (github.com/Hendrik4K/pi-relay) on this Windows PC so I can use my Raspberry Pi without a monitor. Check first and ask me before every change: …</summary>
+
+```text
+Help me set up Pi Relay (github.com/Hendrik4K/pi-relay) on this Windows PC so I can use my Raspberry Pi without a monitor.
+Check first and ask me before every change:
+1. Windows 10/11 64-bit, OpenSSH client (`ssh -V`) and WebView2 present? If something is missing, tell me how to install it.
+2. Download the latest installer from the GitHub releases, compare its SHA256 with the .sha256 file and run it only after my OK.
+3. Find my Pi on the network (e.g. `raspberrypi.local` or via the ARP table) or ask me for its IP address and user name.
+4. Check `~/.ssh/config` for an entry for the Pi. If there is none, propose one (`Host MeinPi`, `HostName`, `User`) and add it after my OK.
+5. Check whether I have an SSH key. Never read private keys. Don't create a new key or copy one to the Pi without asking me first (for a YubiKey: `ssh-keygen -t ed25519-sk`).
+6. Check over SSH that the Pi has Python 3 and a VNC server listening on `127.0.0.1:5900` only. If it's missing, propose TigerVNC (`tigervnc-scraping-server`) with `-localhost` and run `sudo` commands only after my OK; I type the password myself.
+7. Finally tell me how to open Pi Relay from the raspberry in the taskbar and connect.
+```
+
+</details>
+
+**Build it yourself (for tinkerers):** you need the .NET 10 SDK, Node.js 22 or newer and, for the installer, Inno Setup 6. Then, in the project folder:
+
+```bash
+npm ci
+powershell -ExecutionPolicy Bypass -File build-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-checks.ps1
+powershell -ExecutionPolicy Bypass -File build-installer.ps1
+```
+
+</details>
+
+<details>
 <summary><b>💡 What it does</b></summary>
 
 Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can drop HDMI cables completely and still get smart, smooth access to your Pi.
@@ -26,7 +64,7 @@ Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can dro
 - **Your own pictures.** Hover over the Pi, Codex or Claude and stay for about 5 seconds: a ring forms, then you click "PNG ändern" and pick your own picture.
 - **Low-key and plug & play.** Pi Relay waits quietly in the taskbar and is there with one click.
 
-Why this exists: I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
+<ins>Why this exists:</ins> I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
 
 </details>
 
@@ -94,25 +132,6 @@ If the Pi is restarting, Pi Relay waits patiently: click "Verbinden" and it conn
 A second access named `Ersatzzugang` (e.g. with a spare key) is shown as a collapsible backup below the first one.
 
 </details>
-
-</details>
-
-<details>
-<summary><b>🚀 Quickstart</b></summary>
-
-1. Download the installer under **Releases** (on the right) and run it. It installs for you only, no admin rights. If Windows SmartScreen says "Windows protected your PC": **More info → Run anyway** (the installer isn't code-signed).
-2. Add your Pi to the SSH configuration as shown under **Requirements**.
-3. Click the raspberry in the bottom-right taskbar, click your access and confirm your security key.
-4. Screen icon for the Pi desktop, `>_` for the terminal. Done.
-
-**Build it yourself (for tinkerers):** you need the .NET 10 SDK, Node.js 22 or newer and, for the installer, Inno Setup 6. Then, in the project folder:
-
-```bash
-npm ci
-powershell -ExecutionPolicy Bypass -File build-windows.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-checks.ps1
-powershell -ExecutionPolicy Bypass -File build-installer.ps1
-```
 
 </details>
 

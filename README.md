@@ -13,6 +13,44 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
 <details>
+<summary><b>🚀 Schnellstart</b></summary>
+
+1. Den Installer unter **Releases** (rechts) herunterladen und starten. Er installiert nur für dich, ohne Adminrechte. Meldet Windows SmartScreen „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen** (der Installer ist nicht code-signiert).
+2. Deinen Pi wie unter **Voraussetzungen** in die SSH-Konfiguration eintragen.
+3. Auf die Himbeere unten rechts in der Taskleiste klicken, deinen Zugang anklicken und den Sicherheitsschlüssel bestätigen.
+4. Bildschirm-Symbol für den Pi-Desktop, `>_` für das Terminal. Fertig.
+
+**Du bist ein entspannter Typ oder ein entspanntes Girl?** Dann gib einfach diesen Prompt an deinen KI-Agenten (z. B. Claude Code oder Codex auf deinem PC). Er findet heraus, was schon installiert ist, was noch fehlt und wie dein Pi im Netz heißt, und fragt dich bei allem, was er ändern will.
+
+<details>
+<summary><i>Prompt zum Ausklappen:</i> Hilf mir, Pi Relay (github.com/Hendrik4K/pi-relay) auf diesem Windows-PC einzurichten, damit ich meinen Raspberry Pi ohne Monitor nutzen kann. Prüfe zuerst nur und frag mich vor jeder Änderung: …</summary>
+
+```text
+Hilf mir, Pi Relay (github.com/Hendrik4K/pi-relay) auf diesem Windows-PC einzurichten, damit ich meinen Raspberry Pi ohne Monitor nutzen kann.
+Prüfe zuerst nur und frag mich vor jeder Änderung:
+1. Windows 10/11 64 Bit, OpenSSH-Client (`ssh -V`) und WebView2 vorhanden? Fehlt etwas, sag mir, wie ich es nachinstalliere.
+2. Lade den neuesten Installer aus den GitHub-Releases, vergleiche seine SHA256 mit der .sha256-Datei und starte ihn erst nach meinem OK.
+3. Finde meinen Pi im Netz (z. B. `raspberrypi.local` oder per ARP-Tabelle) oder frag mich nach der IP-Adresse und dem Benutzernamen.
+4. Schau in `~/.ssh/config`, ob es schon einen Eintrag für den Pi gibt. Wenn nicht, schlag einen vor (`Host MeinPi`, `HostName`, `User`) und leg ihn nach meinem OK an.
+5. Prüfe, ob ich einen SSH-Schlüssel habe. Lies niemals private Schlüssel. Erzeuge keinen neuen Schlüssel und kopiere keinen auf den Pi, ohne mich vorher zu fragen (für einen YubiKey: `ssh-keygen -t ed25519-sk`).
+6. Prüfe per SSH, ob auf dem Pi Python 3 und ein VNC-Server laufen, der nur auf `127.0.0.1:5900` lauscht. Fehlt er, schlag TigerVNC (`tigervnc-scraping-server`) mit `-localhost` vor und führe `sudo`-Befehle nur nach meinem OK aus; das Passwort tippe ich selbst.
+7. Sag mir am Ende, wie ich Pi Relay über die Himbeere in der Taskleiste öffne und mich verbinde.
+```
+
+</details>
+
+**Selbst bauen (für Bastler):** Du brauchst das .NET 10 SDK, Node.js 22 oder neuer und für den Installer Inno Setup 6. Dann im Projektordner:
+
+```bash
+npm ci
+powershell -ExecutionPolicy Bypass -File build-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-checks.ps1
+powershell -ExecutionPolicy Bypass -File build-installer.ps1
+```
+
+</details>
+
+<details>
 <summary><b>💡 Was es kann</b></summary>
 
 Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. Du kannst zu 100 % auf HDMI-Kabel verzichten und hast trotzdem einen smarten, flüssigen Zugriff auf deinen Pi.
@@ -24,7 +62,7 @@ Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. Du
 - **Eigene Bilder.** Fahr mit der Maus über den Pi, Codex oder Claude und bleib etwa 5 Sekunden dort: Es bildet sich ein Kreis, dann klickst du auf „PNG ändern“ und setzt dein eigenes Bild ein.
 - **Alles dezent und Plug & Play.** Pi Relay wartet unauffällig unten in der Taskleiste und ist mit einem Klick da.
 
-Warum es das gibt: Ich hatte genau dieses Problem und keine fertige Lösung dafür gefunden. Also habe ich sie gebaut und stelle sie jetzt allen zur Verfügung.
+<ins>Warum es das gibt:</ins> Ich hatte genau dieses Problem und keine fertige Lösung dafür gefunden. Also habe ich sie gebaut und stelle sie jetzt allen zur Verfügung.
 
 </details>
 
@@ -92,25 +130,6 @@ Startet der Pi gerade neu, wartet Pi Relay geduldig: Klickst du auf „Verbinden
 Ein zweiter Zugang namens `Ersatzzugang` (z. B. mit einem Ersatzschlüssel) wird als einklappbarer Ersatz unter dem ersten angezeigt.
 
 </details>
-
-</details>
-
-<details>
-<summary><b>🚀 Schnellstart</b></summary>
-
-1. Den Installer unter **Releases** (rechts) herunterladen und starten. Er installiert nur für dich, ohne Adminrechte. Meldet Windows SmartScreen „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen** (der Installer ist nicht code-signiert).
-2. Deinen Pi wie unter **Voraussetzungen** in die SSH-Konfiguration eintragen.
-3. Auf die Himbeere unten rechts in der Taskleiste klicken, deinen Zugang anklicken und den Sicherheitsschlüssel bestätigen.
-4. Bildschirm-Symbol für den Pi-Desktop, `>_` für das Terminal. Fertig.
-
-**Selbst bauen (für Bastler):** Du brauchst das .NET 10 SDK, Node.js 22 oder neuer und für den Installer Inno Setup 6. Dann im Projektordner:
-
-```bash
-npm ci
-powershell -ExecutionPolicy Bypass -File build-windows.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-checks.ps1
-powershell -ExecutionPolicy Bypass -File build-installer.ps1
-```
 
 </details>
 
