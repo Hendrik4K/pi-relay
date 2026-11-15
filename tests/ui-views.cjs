@@ -128,18 +128,21 @@ const {chromium}=load('playwright');
    assert(status.y>=name.y+name.height,'Status button belongs below the name');
   }
   const panel=await page.locator('.relay').boundingBox();
-  const homeHeader=await page.locator('.app-header').boundingBox();
-  const homeTitle=await page.locator('.brand h1').boundingBox();
+  // Positions are read only once they stop moving (pictures and animations can still settle on slow machines).
+  const settled=async selector=>{let last=null;for(let i=0;i<40;i++){const box=await page.locator(selector).boundingBox();if(last&&box.x===last.x&&box.y===last.y&&box.height===last.height)return box;last=box;await page.waitForTimeout(100);}return last;};
+  const homeHeader=await settled('.app-header');
+  const homeTitle=await settled('.brand h1');
   const save=async name=>{await page.waitForTimeout(270);return page.locator('.panel-viewport').screenshot({path:path.join(output,'views-'+name+'-20261111.png')});};
   await save('overview');
   await page.getByRole('button',{name:'Schlüssel verwalten',exact:true}).click();
   await page.getByRole('heading',{name:'SSH-Schlüssel',exact:true}).waitFor();
-  // Measure after the view's arrival animation; on slow machines it may still be running here.
-  await page.waitForFunction(()=>document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:3000}).catch(()=>{});
-  const keysHeader=await page.locator('.app-header').boundingBox();
-  const keysTitle=await page.locator('.brand h1').boundingBox();
+  // Measure once the view has settled: on slow machines the arrival animation and the key picture
+  // can still shift things for a moment after the heading appears.
+  await page.waitForFunction(()=>[...document.images].every(i=>i.complete)&&document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:5000}).catch(()=>{});
+  const keysHeader=await settled('.app-header');
+  const keysTitle=await settled('.brand h1');
   assert.equal(keysHeader.y+keysHeader.height,homeHeader.y+homeHeader.height,'Divider stays aligned across views');
-  assert.equal(keysTitle.x,homeTitle.x,'Larger key icon does not move the title');
+  assert.equal(keysTitle.x,homeTitle.x,`Larger key icon does not move the title (${keysTitle.x} vs ${homeTitle.x})`);
   assert.equal(await page.getByRole('checkbox',{name:'Minimiert starten'}).count(),0);
   assert.equal(await page.getByRole('dialog').count(),0);
   assert.equal(await page.locator('.agents-strip').count(),0);
