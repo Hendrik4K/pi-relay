@@ -1,0 +1,54 @@
+# Builds Pi Relay and runs every automated check on each push: worker tests, native transport and
+# window checks, update logic, activation script and the headless UI suites. No SSH, no Pi needed.
+name: CI
+
+on:
+  push:
+    branches: [main, ci]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Playwright (driver only, the system Chrome is used)
+        shell: pwsh
+        run: |
+          npm install --no-save --ignore-scripts --prefix "$env:RUNNER_TEMP\pw" playwright@1.56.1
+          "PI_RELAY_NODE_MODULES=$env:RUNNER_TEMP\pw\node_modules" >> $env:GITHUB_ENV
+
+      - name: WebView2 runtime
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          if (-not (Test-Path $key)) {
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$env:RUNNER_TEMP\webview2.exe"
+            Start-Process "$env:RUNNER_TEMP\webview2.exe" -ArgumentList '/silent', '/install' -Wait
+          }
+
+      - name: Build
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build-windows.ps1
+
+      - name: All checks
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-checks.ps1

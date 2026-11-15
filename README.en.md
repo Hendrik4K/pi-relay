@@ -1,4 +1,8 @@
+<p align="center"><img src="public/assets/raspberry.png" width="92" alt="Pi Relay"></p>
+
 # Pi Relay <a href="README.en.md"><img align="right" src="docs/screenshots/flag-gb.svg" height="22" alt="English" title="English"></a><a href="README.md"><img align="right" src="docs/screenshots/flag-de.svg" height="22" alt="Deutsch" title="Deutsch"></a><img align="right" src="docs/screenshots/sprache.svg" height="22" alt="Language" title="Choose language">
+
+<p align="center"><a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a> <a href="https://github.com/Hendrik4K/pi-relay/releases/latest"><img src="https://img.shields.io/github/v/release/Hendrik4K/pi-relay?label=Release&color=c51a4a" alt="Release"></a> <a href="https://github.com/Hendrik4K/pi-relay/releases"><img src="https://img.shields.io/github/downloads/Hendrik4K/pi-relay/total?label=Downloads&color=6f42c1" alt="Downloads"></a> <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2ea44f" alt="License MIT"></a> <img src="https://img.shields.io/badge/VNC%20port-not%20exposed-555" alt="VNC%20port"></p>
 
 **Built for headless access to your Raspberry Pi: control it from your Windows desktop in a small viewer window, with no open VNC ports and updates built in.**
 
