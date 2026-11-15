@@ -15,7 +15,7 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 *Heads-up: the app itself speaks German.*
 
 <details>
-<summary><h2>🚀 Quickstart</h2></summary>
+<summary><b>🚀 Quickstart</b></summary>
 
 1. Download the installer under **Releases** (on the right) and run it. It installs for you only, no admin rights. If Windows SmartScreen says "Windows protected your PC": **More info → Run anyway** (the installer isn't code-signed).
 2. Add your Pi to the SSH configuration as shown under **Requirements**.
@@ -48,7 +48,7 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 </details>
 
 <details>
-<summary><h3>💡 What it does</h3></summary>
+<summary><b>💡 What it does</b></summary>
 
 Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can drop HDMI cables completely and still get smart, smooth access to your Pi.
 

@@ -13,7 +13,7 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
 <details>
-<summary><h2>🚀 Schnellstart</h2></summary>
+<summary><b>🚀 Schnellstart</b></summary>
 
 1. Den Installer unter **Releases** (rechts) herunterladen und starten. Er installiert nur für dich, ohne Adminrechte. Meldet Windows SmartScreen „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen** (der Installer ist nicht code-signiert).
 2. Deinen Pi wie unter **Voraussetzungen** in die SSH-Konfiguration eintragen.
@@ -46,7 +46,7 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 </details>
 
 <details>
-<summary><h3>💡 Was es kann</h3></summary>
+<summary><b>💡 Was es kann</b></summary>
 
 Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. Du kannst zu 100 % auf HDMI-Kabel verzichten und hast trotzdem einen smarten, flüssigen Zugriff auf deinen Pi.
 
