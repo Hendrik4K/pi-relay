@@ -1,10 +1,8 @@
-# Pi Relay
+# Pi Relay &nbsp;<a href="README.md"><img src="docs/screenshots/flag-de.svg" height="20" alt="Deutsch" title="Deutsch"></a> <a href="README.en.md"><img src="docs/screenshots/flag-gb.svg" height="20" alt="English" title="English"></a>
 
 **Gebaut für den Headless-Zugriff auf deinen Raspberry Pi: Du steuerst ihn vom Windows-Desktop aus, in einem kleinen Viewer-Fenster, ohne offene VNC-Ports und mit eingebauten Updates.**
 
 Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben (gern auch deinen YubiKey, der Pi steht auf Hardware), einmal bestätigen. Ab dann klopft Pi Relay bei Bedarf per SSH-Tunnel an und du arbeitest auf dem Pi, als stünde er neben dir. Mit eingebauter FPS-Anzeige, falls du deinem Pi beim Schwitzen zusehen willst.
-
-*Built for headless access to your Raspberry Pi: control it from your Windows desktop in a small viewer window, no open VNC ports, updates built in. Download, point it at your SSH key (a YubiKey works fine), confirm once, done. English below.*
 
 <p align="center"><img src="docs/screenshots/taskleiste.png" width="420" alt="Pi Relay im Windows-Infobereich"></p>
 
@@ -17,7 +15,6 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 <details>
 <summary><h2>Was es kann</h2></summary>
 
-
 - **Ein SSH-Kanal pro Zugang.** Terminal, Bildschirm und Agenten teilen sich dieselbe OpenSSH-Verbindung. Hardware-Sicherheitsschlüssel (FIDO2/`sk-`) funktionieren, die Bestätigung erfolgt einmal.
 - **Integrierter Pi-Bildschirm.** noVNC läuft lokal im eigenen Fenster und tunnelt RFB durch die bestehende SSH-Verbindung zu `127.0.0.1:5900` auf dem Pi. Es gibt keinen offenen VNC-Port, keinen lokalen Listener, kein Konto und keinen externen Viewer. Das Fenster passt sich weich dem Seitenverhältnis an, Dateien lassen sich per Drag & Drop direkt auf den Pi-Desktop ziehen, die Zwischenablage wird übertragen. RealVNC/TigerVNC bleiben als ausdrücklich gewählter Rückfall möglich.
 - **Echtes Terminal** (xterm.js mit Linux-PTY) im eigenen Fenster.
@@ -29,7 +26,6 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 
 <details>
 <summary><h2>Voraussetzungen</h2></summary>
-
 
 - Windows 10/11 x64 mit WebView2 Runtime und dem eingebauten OpenSSH-Client
 - Raspberry Pi mit SSH und Python 3. Für den Bildschirm braucht der Pi einen VNC-Server, der **nur lokal auf `127.0.0.1:5900`** lauscht und keine eigene Anmeldung verlangt. Pi Relay fragt nicht nach einem bestimmten Programm. Beispiel **WayVNC** (Wayland, z. B. labwc):
@@ -78,7 +74,6 @@ Nach einem Neustart des Pi wartet Pi Relay geduldig: Ein Klick auf „Verbinden�
 <details>
 <summary><h2>Bauen</h2></summary>
 
-
 Benötigt das .NET 10 SDK, Node.js 22+ und für den Installer Inno Setup 6.
 
 ```bash
@@ -92,7 +87,6 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 
 <details>
 <summary><h2>Sicherheit in Kürze</h2></summary>
-
 
 - Kein Netzwerkdienst auf dem Pi: Der Worker (`native/remote_worker.py`) läuft nur für die Dauer der SSH-Sitzung.
 - Der VNC-Tunnel kennt genau ein festes Ziel (`127.0.0.1:5900`), keine frei wählbare Adresse.
@@ -111,27 +105,6 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 <details>
 <summary><h2>Hinweis zu Bildern und Marken</h2></summary>
 
-
 Der Quellcode steht unter der [MIT-Lizenz](LICENSE). Die Figuren, das Gehäusebild und die Icons gehören **nicht** dazu. Raspberry Pi, Claude/Anthropic, Codex/OpenAI, RealVNC und weitere Namen sind Marken ihrer Inhaber. Pi Relay ist ein privates Hobbyprojekt und mit keinem dieser Unternehmen verbunden. Details und Fremdsoftware (noVNC, MPL-2.0) siehe [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
----
-
-</details>
-
-<details>
-<summary><h2>English</h2></summary>
-
-
-**Built for headless access to your Raspberry Pi from the Windows desktop.** Close the window any time: Pi Relay waits in the taskbar, one click on the berry brings the panel back.
-
-Under the hood, Pi Relay is a Windows tray app that keeps **one OpenSSH connection per access alias** to a Raspberry Pi and shares it between:
-
-- an **integrated VNC viewer** (noVNC, bundled locally) that tunnels RFB through that SSH connection to the Pi's VNC server (WayVNC, x11vnc or TigerVNC) on `127.0.0.1:5900`. No open VNC port, no account, no external viewer needed. Smooth aspect-ratio fit, drag-and-drop file upload to the Pi desktop, clipboard sync. RealVNC/TigerVNC remain an optional, explicit fallback.
-- a real **terminal** (xterm.js + Linux PTY),
-- **Codex and Claude** as agents on the Pi via a local MCP server (`PiRelay.exe --mcp codex|claude`), scoped to a project folder, with write and command access off by default.
-
-Hardware security keys (FIDO2 `sk-` keys) work; you confirm once per connection. Requirements, VNC server examples (WayVNC, x11vnc, TigerVNC), an optional nftables rule and build steps are listed in the German section above (commands are the same). The UI is in German.
-
-**License:** source code under [MIT](LICENSE). The pictures and icons are not covered by it; all trademarks belong to their owners and Pi Relay is not affiliated with Raspberry Pi Ltd, Anthropic, OpenAI or RealVNC. Third-party components: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 </details>
