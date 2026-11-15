@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Pi Relay microphone receiver for the Raspberry Pi.
+
+Pi Relay starts this program over the existing SSH connection when you switch on "Mikro" / "Mic" in the
+screen window. It reads the Windows microphone as raw PCM from stdin (s16le, 48 kHz, mono) and offers it
+on the Pi as a PipeWire microphone called "Windows-Mikrofon". The microphone exists only while the switch
+is on; it disappears again when Pi Relay stops the stream.
+
+Install (as your normal desktop user, no sudo):
+    mkdir -p ~/.local/bin
+    cp windows-mikro-empfang ~/.local/bin/ && chmod +x ~/.local/bin/windows-mikro-empfang
+    ~/.local/bin/windows-mikro-empfang --status      # should print "bereit (ready)"
+Needs PipeWire with its PulseAudio layer (standard on Raspberry Pi OS Bookworm/Trixie) and `pactl`
+(package pulseaudio-utils).
+"""
+import os, shutil, signal, subprocess, sys
+
+NAME = 'pi_relay_windows_mic'
+LABEL = 'Windows-Mikrofon'
+CHUNK = 1920  # 20 ms of s16le mono at 48 kHz
+
+if not os.environ.get('XDG_RUNTIME_DIR'):  # SSH sessions sometimes lack it; pactl needs it to find PipeWire
+    os.environ['XDG_RUNTIME_DIR'] = f'/run/user/{os.getuid()}'
+FIFO = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'pi-relay-mikro.fifo')
+
+
+def pactl(*args):
+    return subprocess.run(['pactl', *args], capture_output=True, text=True, timeout=10)
+
+
+def problem():
+    if not shutil.which('pactl'): return 'pactl fehlt (sudo apt install pulseaudio-utils) / pactl missing'
+    try: info = pactl('info')
+    except (OSError, subprocess.SubprocessError) as exc: return f'pactl: {exc}'
+    if info.returncode != 0: return 'PipeWire läuft nicht für diesen Benutzer / PipeWire is not running for this user'
+    if 'PipeWire' not in info.stdout: return 'Kein PipeWire gefunden / PipeWire not found'
+    return None
+
+
+def modules():
+    found = pactl('list', 'short', 'modules')
+    return [line.split('\t')[0] for line in found.stdout.splitlines() if 'module-pipe-source' in line and f'source_name={NAME}' in line]
+
+
+def unload():
+    for index in modules(): pactl('unload-module', index)
+
+
+def run():
+    reason = problem()
+    if reason: print(reason, file=sys.stderr); return 1
+    unload()  # a leftover from an interrupted run
+    loaded = pactl('load-module', 'module-pipe-source', f'source_name={NAME}', f'file={FIFO}', 'format=s16le', 'rate=48000',
+                   'channels=1', f'source_properties=device.description={LABEL}')
+    if loaded.returncode != 0: print('Mikrofon konnte nicht angelegt werden: ' + loaded.stderr.strip(), file=sys.stderr); return 1
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    try:
+        with open(FIFO, 'wb', buffering=0) as pipe:
+            source = sys.stdin.buffer
+            while True:
+                data = source.read1(CHUNK) if hasattr(source, 'read1') else source.read(CHUNK)
+                if not data: break
+                pipe.write(data)
+    except (BrokenPipeError, KeyboardInterrupt):
+        pass
+    finally:
+        unload()
+    return 0
+
+
+if __name__ == '__main__':
+    if '--status' in sys.argv[1:]:
+        reason = problem()
+        print(reason or 'bereit (ready)')
+        sys.exit(1 if reason else 0)
+    sys.exit(run())

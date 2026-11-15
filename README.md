@@ -50,15 +50,17 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 <details>
 <summary><b>💡 Was es kann</b></summary>
 
-Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. Du kannst zu 100 % auf HDMI-Kabel verzichten und hast trotzdem einen smarten, flüssigen Zugriff auf deinen Pi.
+Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. HDMI-Kabel brauchst du keins mehr.
 
-- **Der Pi-Bildschirm im eigenen Fenster.** Dafür gibt es ein extra Fenster, in dem du den Pi siehst und bedienst wie einen zweiten Bildschirm. Wir haben uns für VNC entschieden (mit eingebautem noVNC), weil das solide und bewährt ist. Alles läuft durch deine SSH-Verbindung, im Heimnetz ist kein VNC-Port offen. Den Viewer aktualisierst du selbst mit einem Klick, damit du nicht auf alten Sicherheitslücken sitzen bleibst.
-- **Bildschirm und Terminal mit einem Klick.** In der Pi-Relay-Managementzentrale findest du neben deinem Zugang zwei Knöpfe: Das Bildschirm-Symbol öffnet den Pi-Desktop, der Terminal-Knopf rechts daneben (`>_`) öffnet ein echtes Terminal, in dem du per SSH direkt auf deinem Pi schreibst.
-- **Deine KI-Agenten direkt auf dem Pi.** Codex (ChatGPT) oder Claude bekommen einen leichten SSH-Zugang, damit du von Windows aus mit KI-Agenten auf dem Pi arbeiten kannst. Du gibst pro Agent einen Projektordner frei. Lesen geht, Dateien ändern und Befehle ausführen bleiben aus, bis du sie einzeln anknipst.
-- **Schlüssel im Griff.** Den Speicherort deiner SSH-Schlüssel verwaltest du direkt in der App, YubiKey & Co. funktionieren.
-- **Eigene Bilder.** Fahr mit der Maus über den Pi, Codex oder Claude und bleib etwa 5 Sekunden dort: Es bildet sich ein Kreis, dann klickst du auf „PNG ändern“ und setzt dein eigenes Bild ein.
-- **Deutsch oder Englisch.** In den Einstellungen sitzt links vom X ein Sprachschalter mit Flagge: ein Klick, und die ganze Oberfläche wechselt die Sprache. Auf einem englischen Windows startet Pi Relay gleich auf Englisch.
-- **Alles dezent und Plug & Play.** Pi Relay wartet unauffällig unten in der Taskleiste und ist mit einem Klick da.
+- **Dein eigener Remote-Bildschirm für den Pi, direkt in Windows.** Ein extra Fenster, in dem du den Pi siehst und bedienst wie einen zweiten Bildschirm. Alles läuft über deine SSH-Verbindung.
+- **Maus, Tastatur und Mikrofon.** Nutze Maus, Tastatur und Mikrofon deines Windows-Rechners, ohne irgendwas an den Pi anschließen zu müssen.
+- **Dateien und Zwischenablage.** Zieh Dateien per Drag & Drop ins Fenster, schon liegen sie auf dem Pi-Desktop. Copy & Paste klappt in beide Richtungen: Was du zuletzt kopiert hast, nutzt du direkt auf dem Pi weiter. Und mit „An Pi“ schickst du es jederzeit nochmal rüber.
+- **Terminal mit einem Klick.** Der Knopf `>_` neben deinem Zugang öffnet ein echtes SSH-Terminal auf deinem Pi.
+- **Deine KI-Agenten direkt auf dem Pi.** Codex (ChatGPT) oder Claude arbeiten in einem Projektordner, den du freigibst. Lesen geht, Dateien ändern und Befehle knipst du einzeln an.
+- **Schlüssel im Griff.** SSH-Schlüssel verwaltest du direkt in der App, YubiKey & Co. funktionieren.
+- **Eigene Bilder.** Bleib etwa 5 Sekunden mit der Maus auf dem Pi, Codex oder Claude, dann „PNG ändern“ klicken und dein Bild einsetzen.
+- **Deutsch oder Englisch.** Ein Klick auf den Sprachschalter in den Einstellungen, und alles wechselt die Sprache.
+- **Alles dezent und Plug & Play.** Pi Relay wartet unauffällig in der Taskleiste und ist mit einem Klick da.
 
 <ins>Warum es das gibt:</ins> Ich hatte genau dieses Problem und keine fertige Lösung dafür gefunden. Also habe ich sie gebaut und stelle sie jetzt allen zur Verfügung.
 
@@ -132,7 +134,24 @@ Ein zweiter Zugang namens `Ersatzzugang` (z. B. mit einem Ersatzschlüssel) wird
 </details>
 
 <details>
-<summary><b>🔒 Sicherheit in Kürze</b></summary>
+<summary><b>🔒 Technik und Sicherheit</b></summary>
+
+**So funktioniert's**
+
+- **Bildschirm:** VNC mit eingebautem noVNC, weil das solide und bewährt ist. Das Bild kommt durch deine SSH-Verbindung, im Heimnetz ist kein VNC-Port offen. Für neue noVNC-Versionen baut Pi Relay auf Knopfdruck ein geprüftes Update, damit du nicht auf alten Sicherheitslücken sitzen bleibst.
+- **Maus und Tastatur** gehen über VNC an den Pi, als säßest du davor.
+- **Mikrofon:** VNC überträgt kein Audio. Der Schalter „Mikro“ im Bildschirmfenster (standardmäßig aus) schickt dein Windows-Mikrofon (48 kHz, mono) durch die SSH-Verbindung an den kleinen Empfänger [`pi/windows-mikro-empfang`](pi/windows-mikro-empfang). Der macht daraus auf dem Pi ein Mikrofon „Windows-Mikrofon“ (PipeWire), solange der Schalter an ist. Einmal auf dem Pi einrichten, dann sagt `--status` „bereit“:
+
+  ```bash
+  mkdir -p ~/.local/bin
+  curl -fsSL https://raw.githubusercontent.com/Hendrik4K/pi-relay/main/pi/windows-mikro-empfang -o ~/.local/bin/windows-mikro-empfang
+  chmod +x ~/.local/bin/windows-mikro-empfang
+  ~/.local/bin/windows-mikro-empfang --status
+  ```
+- **Dateien:** Per Drag & Drop abgelegte Dateien landen nur auf dem Pi-Desktop (`~/Desktop`), bis 512 MiB pro Datei. Der Pfad liegt danach in der Pi-Zwischenablage.
+- **Zwischenablage:** Wechselst du ins Bildschirmfenster, geht dein zuletzt kopierter Windows-Text an den Pi; was du auf dem Pi kopierst, landet in Windows. „An Pi“ schickt die Windows-Zwischenablage jederzeit von Hand.
+
+**Sicherheit**
 
 - Kein Netzwerkdienst auf dem Pi: Der Worker (`native/remote_worker.py`) läuft nur für die Dauer der SSH-Sitzung.
 - Der VNC-Tunnel kennt genau ein festes Ziel (`127.0.0.1:5900`), keine frei wählbare Adresse.

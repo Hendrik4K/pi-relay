@@ -52,14 +52,16 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 <details>
 <summary><b>💡 What it does</b></summary>
 
-Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. You can drop HDMI cables completely and still get smart, smooth access to your Pi.
+Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. No more HDMI cables.
 
-- **The Pi screen in its own window.** There's a dedicated window where you see and use the Pi like a second screen. We went with VNC (with noVNC built in) because it's solid and proven. Everything runs through your SSH connection, no VNC port is open on your network. You update the viewer yourself with one click, so you never get stuck with old security holes.
-- **Screen and terminal with one click.** In the Pi Relay management panel there are two buttons next to your access: the screen icon opens the Pi desktop, the terminal button right next to it (`>_`) opens a real terminal where you type on your Pi over SSH.
-- **Your AI agents right on the Pi.** Codex (ChatGPT) or Claude get easy SSH access so you can work with AI agents on the Pi from Windows. You give each agent one project folder. Reading is fine; changing files and running commands stay off until you switch them on one by one.
-- **Keys under control.** You manage where your SSH keys live right in the app; YubiKey & co. work.
-- **Your own pictures.** Hover over the Pi, Codex or Claude and stay for about 5 seconds: a ring forms, then you click "Change PNG" ("PNG ändern" in German) and pick your own picture.
-- **English or German.** In the settings there's a language switch with a flag left of the X: one click and the whole interface changes language. On an English Windows, Pi Relay starts in English right away.
+- **Your own remote screen for the Pi, right in Windows.** A dedicated window where you see and use the Pi like a second screen. Everything runs through your SSH connection.
+- **Mouse, keyboard and microphone.** Use your Windows PC's mouse, keyboard and microphone without plugging anything into the Pi.
+- **Files and clipboard.** Drag & drop files into the window and they land on the Pi desktop. Copy & paste works both ways: whatever you copied last, you keep using right on the Pi. And "To Pi" sends it over again any time.
+- **Terminal with one click.** The `>_` button next to your access opens a real SSH terminal on your Pi.
+- **Your AI agents right on the Pi.** Codex (ChatGPT) or Claude work in one project folder you share. Reading is fine; changing files and running commands you switch on one by one.
+- **Keys under control.** Manage your SSH keys right in the app; YubiKey & co. work.
+- **Your own pictures.** Stay on the Pi, Codex or Claude with the mouse for about 5 seconds, then click "Change PNG" and pick your picture.
+- **English or German.** One click on the language switch in the settings and everything changes language.
 - **Low-key and plug & play.** Pi Relay waits quietly in the taskbar and is there with one click.
 
 <ins>Why this exists:</ins> I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
@@ -134,7 +136,24 @@ A second access named `Ersatzzugang` (e.g. with a spare key) is shown as a colla
 </details>
 
 <details>
-<summary><b>🔒 Security in brief</b></summary>
+<summary><b>🔒 Tech and security</b></summary>
+
+**How it works**
+
+- **Screen:** VNC with noVNC built in, because it's solid and proven. The picture comes through your SSH connection; no VNC port is open on your network. For new noVNC versions Pi Relay builds a tested update at the push of a button, so you never get stuck with old security holes.
+- **Mouse and keyboard** go to the Pi over VNC, as if you were sitting in front of it.
+- **Microphone:** VNC carries no audio. The "Mic" switch in the screen window (off by default) sends your Windows microphone (48 kHz, mono) through the SSH connection to the small receiver [`pi/windows-mikro-empfang`](pi/windows-mikro-empfang). It turns it into a microphone "Windows-Mikrofon" on the Pi (PipeWire) for as long as the switch is on. Set it up once on the Pi, then `--status` says "bereit (ready)":
+
+  ```bash
+  mkdir -p ~/.local/bin
+  curl -fsSL https://raw.githubusercontent.com/Hendrik4K/pi-relay/main/pi/windows-mikro-empfang -o ~/.local/bin/windows-mikro-empfang
+  chmod +x ~/.local/bin/windows-mikro-empfang
+  ~/.local/bin/windows-mikro-empfang --status
+  ```
+- **Files:** Files you drag & drop land only on the Pi desktop (`~/Desktop`), up to 512 MiB per file. Their path is in the Pi clipboard afterwards.
+- **Clipboard:** When you switch to the screen window, the Windows text you copied last goes to the Pi; whatever you copy on the Pi lands in Windows. "To Pi" sends the Windows clipboard by hand any time.
+
+**Security**
 
 - No network service on the Pi: the worker (`native/remote_worker.py`) only runs for the duration of the SSH session.
 - The VNC tunnel knows exactly one fixed target (`127.0.0.1:5900`), never a freely chosen address.
