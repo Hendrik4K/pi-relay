@@ -1,16 +1,14 @@
 # Pi Relay <a href="README.en.md"><img align="right" src="docs/screenshots/flag-gb.svg" height="22" alt="English" title="English"></a><a href="README.md"><img align="right" src="docs/screenshots/flag-de.svg" height="22" alt="Deutsch" title="Deutsch"></a><img align="right" src="docs/screenshots/sprache.svg" height="22" alt="Sprache" title="Sprache wählen">
 
-<p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Pi-Bildschirm schließen und über das Himbeer-Symbol in der Taskleiste wieder öffnen"></p>
-
 **Gebaut für den Headless-Zugriff auf deinen Raspberry Pi: Du steuerst ihn vom Windows-Desktop aus, in einem kleinen Viewer-Fenster, ohne offene VNC-Ports und mit eingebauten Updates.**
 
 <p align="center"><img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <a href="https://github.com/Hendrik4K/pi-relay/releases/latest"><img src="https://img.shields.io/github/v/release/Hendrik4K/pi-relay?label=Version&color=c51a4a" alt="Version"></a> <img src="https://img.shields.io/badge/VNC--Port-nicht%20offen-555" alt="VNC--Port"> <a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a></p>
 
+<p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Pi-Bildschirm schließen und über das Himbeer-Symbol in der Taskleiste wieder öffnen"></p>
+
 Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben (gern auch deinen YubiKey, der Pi steht auf Hardware), einmal bestätigen. Ab dann klopft Pi Relay bei Bedarf per SSH-Tunnel an und du arbeitest auf dem Pi, als stünde er neben dir. Mit eingebauter FPS-Anzeige, falls du deinem Pi beim Schwitzen zusehen willst.
 
 <p align="center"><img src="docs/screenshots/titelbild.png" width="820" alt="Pi Relay: dein Raspberry Pi ohne Monitor, direkt auf dem Windows-Desktop"></p>
-
-<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay im Windows-Infobereich"></p>
 
 <details>
 <summary><b>🚀 Schnellstart</b></summary>
@@ -67,7 +65,9 @@ Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. HD
 <details>
 <summary><b>🔎 Extra-Bilder zum Panel</b></summary>
 
-<p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="490" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"> <img src="docs/screenshots/menues.gif" width="296" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
+<p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
+
+<p align="center"><img src="docs/screenshots/menues.gif" width="400" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"> <img src="docs/screenshots/beere-taskleiste.png" width="400" alt="Pi Relay"></p>
 
 </details>
 
