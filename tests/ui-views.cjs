@@ -127,9 +127,9 @@ const {chromium}=load('playwright');
    const status=await agent.locator('.agent-status').boundingBox();
    assert(status.y>=name.y+name.height,'Status button belongs below the name');
   }
-  const panel=await page.locator('.relay').boundingBox();
-  // Positions are read only once they stop moving (pictures and animations can still settle on slow machines).
   const settled=async selector=>{let last=null;for(let i=0;i<40;i++){const box=await page.locator(selector).boundingBox();if(last&&box.x===last.x&&box.y===last.y&&box.height===last.height)return box;last=box;await page.waitForTimeout(100);}return last;};
+  const panel=await settled('.relay');
+  // Positions are read only once they stop moving (pictures and animations can still settle on slow machines).
   await page.waitForFunction(()=>[...document.querySelectorAll('.brand img')].every(i=>i.complete&&i.naturalWidth>0),null,{timeout:10000});
   const homeHeader=await settled('.app-header');
   const homeTitle=await settled('.brand h1');
@@ -142,8 +142,10 @@ const {chromium}=load('playwright');
   await page.waitForFunction(()=>[...document.querySelectorAll('.brand img')].every(i=>i.complete&&i.naturalWidth>0)&&document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:5000}).catch(()=>{});
   const keysHeader=await settled('.app-header');
   const keysTitle=await settled('.brand h1');
-  assert.equal(keysHeader.y+keysHeader.height,homeHeader.y+homeHeader.height,'Divider stays aligned across views');
-  assert.equal(keysTitle.x,homeTitle.x,`Larger key icon does not move the title (${keysTitle.x} vs ${homeTitle.x})`);
+  // Compared inside the panel: the whole panel may sit elsewhere in the test page (seen on CI), the title must not move within it.
+  const keysPanel=await settled('.relay');
+  assert.equal(keysHeader.y+keysHeader.height-keysPanel.y,homeHeader.y+homeHeader.height-panel.y,'Divider stays aligned across views');
+  assert.equal(keysTitle.x-keysPanel.x,homeTitle.x-panel.x,`Larger key icon does not move the title (${keysTitle.x}-${keysPanel.x} vs ${homeTitle.x}-${panel.x})`);
   assert.equal(await page.getByRole('checkbox',{name:'Minimiert starten'}).count(),0);
   assert.equal(await page.getByRole('dialog').count(),0);
   assert.equal(await page.locator('.agents-strip').count(),0);
