@@ -132,6 +132,9 @@ const {chromium}=load('playwright');
   // Positions are read only once they stop moving (pictures and animations can still settle on slow machines).
   await page.waitForFunction(()=>[...document.querySelectorAll('.brand img')].every(i=>i.complete&&i.naturalWidth>0),null,{timeout:10000});
   const homeHeader=await settled('.app-header');
+  // On slow CI runners the start view is sometimes still being laid out (title read at the panel's very edge).
+  // Wait until the title sits right of the berry, then take the settled position.
+  await page.waitForFunction(()=>{const r=document.querySelector('.relay')?.getBoundingClientRect(),h=document.querySelector('.brand h1')?.getBoundingClientRect();return r&&h&&h.left-r.left>20;},null,{timeout:10000});
   const homeTitle=await settled('.brand h1');
   const save=async name=>{await page.waitForTimeout(270);return page.locator('.panel-viewport').screenshot({path:path.join(output,'views-'+name+'-20261111.png')});};
   await save('overview');
@@ -141,6 +144,7 @@ const {chromium}=load('playwright');
   // can still shift things for a moment after the heading appears.
   await page.waitForFunction(()=>[...document.querySelectorAll('.brand img')].every(i=>i.complete&&i.naturalWidth>0)&&document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:5000}).catch(()=>{});
   const keysHeader=await settled('.app-header');
+  await page.waitForFunction(()=>{const r=document.querySelector('.relay')?.getBoundingClientRect(),h=document.querySelector('.brand h1')?.getBoundingClientRect();return r&&h&&h.left-r.left>20;},null,{timeout:10000});
   const keysTitle=await settled('.brand h1');
   // Compared inside the panel: the whole panel may sit elsewhere in the test page (seen on CI), the title must not move within it.
   const keysPanel=await settled('.relay');
