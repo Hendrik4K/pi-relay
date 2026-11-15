@@ -194,9 +194,13 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 /* Hover ring, always round (also around the wide Pi case): 1 s nothing, by 2 s the first quarter has faded in,
    by 5 s it is closed. Then it fills grey and carries the white "PNG ändern" itself, no button of its own. */
 .icon-ring{position:absolute;left:50%;top:50%;height:calc(100% + 14px);width:auto;aspect-ratio:1;pointer-events:none;transform:translate(-50%,-50%) rotate(-90deg);overflow:visible;z-index:5}
-.icon-ring circle{fill:#5d5763;fill-opacity:0;stroke:#a59dac;stroke-width:3;vector-effect:non-scaling-stroke;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0;transition:stroke-dashoffset .35s ease,opacity .35s ease,fill-opacity .35s ease}
-.icon-slot.arming .icon-ring circle{animation:icon-ring-draw 5s linear forwards}
-@keyframes icon-ring-draw{0%,20%{stroke-dashoffset:100;opacity:0;animation-timing-function:ease-in}40%{stroke-dashoffset:75;opacity:.9;animation-timing-function:ease-in-out}100%{stroke-dashoffset:0;opacity:.9}}
+/* One continuous stroke from 1 s to 5 s (about a quarter by 2 s, easing out at the end) with the fade-in laid
+   over its first second: no seam where speed could jump. The stroke scales with the circle, so the dash length
+   matches the ring at every size (a non-scaling stroke made the wide Pi case stop half way). */
+.icon-ring circle{fill:#5d5763;fill-opacity:0;stroke:#a59dac;stroke-width:3.2;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0;transition:stroke-dashoffset .35s ease,opacity .35s ease,fill-opacity .35s ease}
+.icon-slot.arming .icon-ring circle{animation:icon-ring-draw 4s cubic-bezier(.3,.3,.6,1) 1s both,icon-ring-fade 1s ease-in 1s both}
+@keyframes icon-ring-draw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+@keyframes icon-ring-fade{from{opacity:0}to{opacity:.9}}
 .icon-slot.shown .icon-ring circle{stroke-dashoffset:0;opacity:.95;fill-opacity:.88}
 .icon-slot .icon-edit{top:50%;bottom:auto;transform:translate(-50%,-50%) scale(.9);flex-direction:column;align-items:center;gap:1px}
 .icon-slot.shown .icon-edit{transform:translate(-50%,-50%) scale(1)}
