@@ -6,9 +6,9 @@
 
 Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben (gern auch deinen YubiKey, der Pi steht auf Hardware), einmal bestätigen. Ab dann klopft Pi Relay bei Bedarf per SSH-Tunnel an und du arbeitest auf dem Pi, als stünde er neben dir. Mit eingebauter FPS-Anzeige, falls du deinem Pi beim Schwitzen zusehen willst.
 
-<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay im Windows-Infobereich"></p>
-
 <p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Pi-Bildschirm schließen und über das Himbeer-Symbol in der Taskleiste wieder öffnen"></p>
+
+<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay im Windows-Infobereich"></p>
 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
 

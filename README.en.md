@@ -6,9 +6,9 @@
 
 The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is welcome, the Pi loves hardware), confirm once. From then on Pi Relay knocks through an SSH tunnel whenever needed and you work on the Pi as if it sat next to you. With a built-in FPS counter, in case you want to watch your Pi sweat.
 
-<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay in the Windows notification area"></p>
-
 <p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Closing the Pi screen and reopening it from the raspberry icon in the taskbar"></p>
+
+<p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay in the Windows notification area"></p>
 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: clicking the raspberry icon in the taskbar, menu and management panel"></p>
 
