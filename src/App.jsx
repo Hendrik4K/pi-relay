@@ -46,9 +46,10 @@ function resetSlide(){cancelAnimationFrame(slide.frame);slide.offset=0;const rel
 function Asset({name,src,...props}) { return <img draggable="false" src={src||'/assets/'+name+'.png'} {...props}/>; }
 // Own pictures replace the bundled ones; the token busts the image cache after a new import.
 const userIcon=(icons,slot)=>icons?.[slot]?'https://pi-relay-icons.local/'+slot+'.png?v='+icons[slot]:null;
-// Resting on a picture draws a grey ring around it over 2 s (barely visible in the first second, so a short
-// hover shows nothing). Once closed, the ring turns into the "PNG ändern" button ("Standard" for an own picture).
-const ICON_ARM_MS=2000;
+// Resting on a picture draws a grey ring around it: nothing in the first second, the first quarter fades in
+// up to the second, the rest closes by the fifth. Then the ring fills grey and reads "PNG ändern"
+// ("Standard" for an own picture).
+const ICON_ARM_MS=5000;
 function IconSlot({slot,custom,call,children}) {
  const [phase,setPhase]=useState('idle');const timer=useRef();
  useEffect(()=>()=>clearTimeout(timer.current),[]);
@@ -57,7 +58,7 @@ function IconSlot({slot,custom,call,children}) {
  const act=action=>{clearTimeout(timer.current);setPhase('idle');call(action,{slot});};
  return <span className={'icon-slot '+phase+(phase==='shown'?' shown':'')} onPointerEnter={enter} onPointerLeave={leave}>
   {children}
-  <svg className="icon-ring" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><circle cx="50" cy="50" r="47" pathLength="100"/></svg>
+  <svg className="icon-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" pathLength="100"/></svg>
   <span className="icon-edit" inert={phase!=='shown'}><button className="icon-edit-main" onClick={()=>act('pickIcon')}>PNG ändern</button>{custom&&<button className="icon-edit-reset" onClick={()=>act('resetIcon')}>Standard</button>}</span>
  </span>;
 }

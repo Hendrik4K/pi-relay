@@ -79,8 +79,8 @@ public sealed class RelayWindow : Window {
  // Fallback only: the renderer reports the real end of its slide (hideComplete/revealComplete).
  private readonly System.Windows.Threading.DispatcherTimer collapseTimer=new(){Interval=TimeSpan.FromMilliseconds(1200)};
  private readonly System.Windows.Threading.DispatcherTimer resizeTimer=new(){Interval=TimeSpan.FromMilliseconds(16)};
- // The open panel folds itself away after 20 s without the mouse over it or typing in it.
- private static readonly TimeSpan AutoCollapseAfter=TimeSpan.FromSeconds(20);
+ // The open panel folds itself away after 6 s without the mouse over it or typing in it.
+ private static readonly TimeSpan AutoCollapseAfter=TimeSpan.FromSeconds(6);
  private readonly System.Windows.Threading.DispatcherTimer idleTimer=new(){Interval=TimeSpan.FromSeconds(1)};
  private DateTime lastPanelActivity=DateTime.UtcNow;
  private readonly Stopwatch resizeClock=new();
@@ -109,7 +109,7 @@ public sealed class RelayWindow : Window {
   revealTimer.Tick+=(_,_)=>FinishReveal();
   resizeTimer.Tick+=(_,_)=>AdvancePanelSize();
   idleTimer.Tick+=(_,_)=>CheckIdleCollapse();idleTimer.Start();
-  BuildTrayMenu();tray.Text="Pi Relay · getrennt";tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};UpdateIcon();tray.Visible=true;StartSpinIfRestarted();
+  BuildTrayMenu();tray.Text="Pi Relay · getrennt";tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};StartSpinIfRestarted();UpdateIcon();tray.Visible=true;
   timer.Tick+=(_,_)=>{foreach(var connection in connections.Values)connection.Refresh();viewerUpdates.Tick();integratedViewer.Tick();if(++reachTicks>=(IsVisible&&Opacity>0?5:30))CheckReachability();Push();};timer.Start();
   // Tray startup is hidden, never iconically minimized. A taskbar-less WPF
   // minimized window becomes a tiny desktop bar and can leave WebView2 at 0px.
@@ -330,13 +330,17 @@ public sealed class RelayWindow : Window {
  private Bitmap? berryImage;
  private void StartSpinIfRestarted(){
   try{if(!File.Exists(SpinMarker))return;var fresh=DateTime.UtcNow-File.GetLastWriteTimeUtc(SpinMarker)<TimeSpan.FromMinutes(2);File.Delete(SpinMarker);if(!fresh)return;}catch{return;}
-  StartSpin();
+  StartSpin(landing:true);
  }
- private bool spinWired;
- // Also used by the update check in the tray menu; a spin already running just starts over.
- private void StartSpin(){
+ private bool spinWired,spinLanding;
+ // The update check in the tray menu flicks the visible berry (speeds up, slows down); after a restart it
+ // appears already spinning at full speed and only slows down. A spin already running just starts over.
+ private void StartSpin(bool landing=false){
   if(!saved.Settings.Motion)return;
-  if(!spinWired){spinWired=true;spinTimer.Tick+=(_,_)=>{spinAngle=TraySpin.Angle(spinClock.Elapsed.TotalSeconds);if(spinAngle==null)spinTimer.Stop();UpdateIcon();};}
+  if(!spinWired){spinWired=true;spinTimer.Tick+=(_,_)=>{var t=spinClock.Elapsed.TotalSeconds;spinAngle=spinLanding?TraySpin.LandingAngle(t):TraySpin.Angle(t);if(spinAngle==null)spinTimer.Stop();UpdateIcon();};}
+  spinLanding=landing;
+  // Landing starts edge-on, so the berry is never seen still before it spins.
+  if(landing){spinAngle=90;UpdateIcon();}
   spinClock.Restart();spinTimer.Start();
  }
  // Tray menu in the app's look. The version line checks for updates on click and offers them one after another.

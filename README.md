@@ -8,9 +8,9 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 
 <p align="center"><img src="docs/screenshots/taskleiste.png" width="420" alt="Pi Relay im Windows-Infobereich"></p>
 
-<p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
+<p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Pi-Bildschirm schließen und über das Himbeer-Symbol in der Taskleiste wieder öffnen"></p>
 
-<p align="center"><img src="docs/screenshots/pi-bildschirm.png" width="720" alt="Pi-Desktop im integrierten Viewer"></p>
+<p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
 
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
