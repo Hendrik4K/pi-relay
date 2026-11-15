@@ -13,13 +13,6 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
 
 <details>
-<summary><b>🔎 Panel-Rundgang in groß</b></summary>
-
-<p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
-
-</details>
-
-<details>
 <summary><b>🚀 Schnellstart</b></summary>
 
 1. Den Installer unter **Releases** (rechts) herunterladen und starten. Er installiert nur für dich, ohne Adminrechte. Meldet Windows SmartScreen „Der Computer wurde durch Windows geschützt“: **Weitere Informationen → Trotzdem ausführen** (der Installer ist nicht code-signiert).
@@ -68,6 +61,13 @@ Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. HD
 - **Alles dezent und Plug & Play.** Pi Relay wartet unauffällig in der Taskleiste und ist mit einem Klick da.
 
 <ins>Warum es das gibt:</ins> Ich hatte genau dieses Problem und keine fertige Lösung dafür gefunden. Also habe ich sie gebaut und stelle sie jetzt allen zur Verfügung.
+
+</details>
+
+<details>
+<summary><b>🔎 Extra-Bilder zum Panel</b></summary>
+
+<p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
 
 </details>
 

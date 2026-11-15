@@ -13,13 +13,6 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: clicking the raspberry icon in the taskbar, menu and management panel"></p>
 
 <details>
-<summary><b>🔎 Panel tour up close</b></summary>
-
-<p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: management panel, Pi screen and settings"></p>
-
-</details>
-
-<details>
 <summary><b>🚀 Quickstart</b></summary>
 
 1. Download the installer under **Releases** (on the right) and run it. It installs for you only, no admin rights. If Windows SmartScreen says "Windows protected your PC": **More info → Run anyway** (the installer isn't code-signed).
@@ -68,6 +61,13 @@ Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. No more HDM
 - **Low-key and plug & play.** Pi Relay waits quietly in the taskbar and is there with one click.
 
 <ins>Why this exists:</ins> I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
+
+</details>
+
+<details>
+<summary><b>🔎 Extra pictures of the panel</b></summary>
+
+<p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: management panel, Pi screen and settings"></p>
 
 </details>
 
