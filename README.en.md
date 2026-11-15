@@ -12,9 +12,12 @@ The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is 
 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: clicking the raspberry icon in the taskbar, menu and management panel"></p>
 
+<details>
+<summary><b>🔎 Panel tour up close</b></summary>
+
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: management panel, Pi screen and settings"></p>
 
-*Heads-up: the app itself speaks German.*
+</details>
 
 <details>
 <summary><b>🚀 Quickstart</b></summary>
@@ -142,12 +145,14 @@ A second access named `Ersatzzugang` (e.g. with a spare key) is shown as a colla
 
 - **Screen:** VNC with noVNC built in, because it's solid and proven. The picture comes through your SSH connection; no VNC port is open on your network. For new noVNC versions Pi Relay builds a tested update at the push of a button, so you never get stuck with old security holes.
 - **Mouse and keyboard** go to the Pi over VNC, as if you were sitting in front of it.
-- **Microphone:** VNC carries no audio. The "Mic" switch in the screen window (off by default) sends your Windows microphone (48 kHz, mono) through the SSH connection to the small receiver [`pi/windows-mikro-empfang`](pi/windows-mikro-empfang). It turns it into a microphone "Windows-Mikrofon" on the Pi (PipeWire) for as long as the switch is on. Set it up once on the Pi, then `--status` says "bereit (ready)":
+- **Microphone:** VNC carries no audio. The "Mic" switch in the screen window (off by default) sends your Windows microphone (48 kHz, mono) through the SSH connection to the small receiver [`pi/windows-mikro-empfang`](pi/windows-mikro-empfang). It plays it into a virtual microphone "Windows-Mikrofon (Pi Relay)" on the Pi ([`pi/windows-mikrofon.conf`](pi/windows-mikrofon.conf), PipeWire) and makes it the default microphone. Set it up once on the Pi, then `--status` says "bereit (ready)":
 
   ```bash
-  mkdir -p ~/.local/bin
+  mkdir -p ~/.local/bin ~/.config/pipewire/pipewire.conf.d
   curl -fsSL https://raw.githubusercontent.com/Hendrik4K/pi-relay/main/pi/windows-mikro-empfang -o ~/.local/bin/windows-mikro-empfang
+  curl -fsSL https://raw.githubusercontent.com/Hendrik4K/pi-relay/main/pi/windows-mikrofon.conf -o ~/.config/pipewire/pipewire.conf.d/windows-mikrofon.conf
   chmod +x ~/.local/bin/windows-mikro-empfang
+  systemctl --user restart pipewire
   ~/.local/bin/windows-mikro-empfang --status
   ```
 - **Files:** Files you drag & drop land only on the Pi desktop (`~/Desktop`), up to 512 MiB per file. Their path is in the Pi clipboard afterwards.

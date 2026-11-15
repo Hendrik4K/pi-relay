@@ -12,7 +12,12 @@ Die Anleitung passt auf einen Bierdeckel: herunterladen, SSH-Schlüssel angeben 
 
 <p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: Klick auf das Himbeer-Symbol in der Taskleiste, Menü und Managementzentrale"></p>
 
+<details>
+<summary><b>🔎 Panel-Rundgang in groß</b></summary>
+
 <p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: Managementzentrale, Pi-Bildschirm und Einstellungen"></p>
+
+</details>
 
 <details>
 <summary><b>🚀 Schnellstart</b></summary>
@@ -140,12 +145,14 @@ Ein zweiter Zugang namens `Ersatzzugang` (z. B. mit einem Ersatzschlüssel) wird
 
 - **Bildschirm:** VNC mit eingebautem noVNC, weil das solide und bewährt ist. Das Bild kommt durch deine SSH-Verbindung, im Heimnetz ist kein VNC-Port offen. Für neue noVNC-Versionen baut Pi Relay auf Knopfdruck ein geprüftes Update, damit du nicht auf alten Sicherheitslücken sitzen bleibst.
 - **Maus und Tastatur** gehen über VNC an den Pi, als säßest du davor.
-- **Mikrofon:** VNC überträgt kein Audio. Der Schalter „Mikro“ im Bildschirmfenster (standardmäßig aus) schickt dein Windows-Mikrofon (48 kHz, mono) durch die SSH-Verbindung an den kleinen Empfänger [`pi/windows-mikro-empfang`](pi/windows-mikro-empfang). Der macht daraus auf dem Pi ein Mikrofon „Windows-Mikrofon“ (PipeWire), solange der Schalter an ist. Einmal auf dem Pi einrichten, dann sagt `--status` „bereit“:
+- **Mikrofon:** VNC überträgt kein Audio. Der Schalter „Mikro“ im Bildschirmfenster (standardmäßig aus) schickt dein Windows-Mikrofon (48 kHz, mono) durch die SSH-Verbindung an den kleinen Empfänger [`pi/windows-mikro-empfang`](pi/windows-mikro-empfang). Der spielt es in ein virtuelles Mikrofon „Windows-Mikrofon (Pi Relay)“ auf dem Pi ([`pi/windows-mikrofon.conf`](pi/windows-mikrofon.conf), PipeWire) und macht es zum Standard-Mikrofon. Einmal auf dem Pi einrichten, dann sagt `--status` „bereit“:
 
   ```bash
-  mkdir -p ~/.local/bin
+  mkdir -p ~/.local/bin ~/.config/pipewire/pipewire.conf.d
   curl -fsSL https://raw.githubusercontent.com/Hendrik4K/pi-relay/main/pi/windows-mikro-empfang -o ~/.local/bin/windows-mikro-empfang
+  curl -fsSL https://raw.githubusercontent.com/Hendrik4K/pi-relay/main/pi/windows-mikrofon.conf -o ~/.config/pipewire/pipewire.conf.d/windows-mikrofon.conf
   chmod +x ~/.local/bin/windows-mikro-empfang
+  systemctl --user restart pipewire
   ~/.local/bin/windows-mikro-empfang --status
   ```
 - **Dateien:** Per Drag & Drop abgelegte Dateien landen nur auf dem Pi-Desktop (`~/Desktop`), bis 512 MiB pro Datei. Der Pfad liegt danach in der Pi-Zwischenablage.
