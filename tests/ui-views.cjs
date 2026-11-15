@@ -134,6 +134,8 @@ const {chromium}=load('playwright');
   await save('overview');
   await page.getByRole('button',{name:'Schlüssel verwalten',exact:true}).click();
   await page.getByRole('heading',{name:'SSH-Schlüssel',exact:true}).waitFor();
+  // Measure after the view's arrival animation; on slow machines it may still be running here.
+  await page.waitForFunction(()=>document.getAnimations().every(a=>a.playState!=='running'||a.effect?.getComputedTiming().iterations===Infinity),null,{timeout:3000}).catch(()=>{});
   const keysHeader=await page.locator('.app-header').boundingBox();
   const keysTitle=await page.locator('.brand h1').boundingBox();
   assert.equal(keysHeader.y+keysHeader.height,homeHeader.y+homeHeader.height,'Divider stays aligned across views');
