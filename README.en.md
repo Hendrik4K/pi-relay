@@ -1,16 +1,16 @@
 # Pi Relay <a href="README.en.md"><img align="right" src="docs/screenshots/flag-gb.svg" height="22" alt="English" title="English"></a><a href="README.md"><img align="right" src="docs/screenshots/flag-de.svg" height="22" alt="Deutsch" title="Deutsch"></a><img align="right" src="docs/screenshots/sprache.svg" height="22" alt="Language" title="Choose language">
 
+<p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Closing the Pi screen and reopening it from the raspberry icon in the taskbar"></p>
+
 **Built for headless access to your Raspberry Pi: control it from your Windows desktop in a small viewer window, with no open VNC ports and updates built in.**
 
 <p align="center"><img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6" alt="Windows 10 | 11"> <a href="https://github.com/Hendrik4K/pi-relay/releases/latest"><img src="https://img.shields.io/github/v/release/Hendrik4K/pi-relay?label=Version&color=c51a4a" alt="Version"></a> <img src="https://img.shields.io/badge/VNC%20port-not%20exposed-555" alt="VNC%20port"> <a href="https://github.com/Hendrik4K/pi-relay/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Hendrik4K/pi-relay/ci.yml?branch=main&label=CI" alt="CI"></a></p>
 
 The manual fits on a beer mat: download, point it at your SSH key (a YubiKey is welcome, the Pi loves hardware), confirm once. From then on Pi Relay knocks through an SSH tunnel whenever needed and you work on the Pi as if it sat next to you. With a built-in FPS counter, in case you want to watch your Pi sweat.
 
-<p align="center"><img src="docs/screenshots/fenster-ablauf.gif" width="820" alt="Closing the Pi screen and reopening it from the raspberry icon in the taskbar"></p>
+<p align="center"><img src="docs/screenshots/titelbild.png" width="820" alt="Pi Relay: your headless Raspberry Pi, right on the Windows desktop"></p>
 
 <p align="center"><img src="docs/screenshots/kopfzeile.png" width="820" alt="Pi Relay in the Windows notification area"></p>
-
-<p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="820" alt="Pi Relay: clicking the raspberry icon in the taskbar, menu and management panel"></p>
 
 <details>
 <summary><b>🚀 Quickstart</b></summary>
@@ -67,7 +67,7 @@ Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. No more HDM
 <details>
 <summary><b>🔎 Extra pictures of the panel</b></summary>
 
-<p align="center"><img src="docs/screenshots/menues.gif" width="460" alt="Pi Relay: management panel, Pi screen and settings"></p>
+<p align="center"><img src="docs/screenshots/tray-ablauf.gif" width="490" alt="Pi Relay: clicking the raspberry icon in the taskbar, menu and management panel"> <img src="docs/screenshots/menues.gif" width="296" alt="Pi Relay: management panel, Pi screen and settings"></p>
 
 </details>
 
