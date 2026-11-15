@@ -212,8 +212,9 @@ public sealed class RelayWindow : Window {
   case "quit":Quit();break;
   case "refresh":await Refresh();break;
   case "connectProfile":await EnsureConnection(r.GetProperty("alias").GetString()??"");break;
+  case "cancelLogin":authenticatingSession?.CancelLogin();break;
   case "cancelWait":if(waitingFor.TryGetValue(r.GetProperty("alias").GetString()??"",out var waitCancel))waitCancel.Cancel();break;
-  case "connectTerminal":ConnectTerminal(r.GetProperty("alias").GetString()??"");break;
+  case "connectTerminal":await ConnectTerminal(r.GetProperty("alias").GetString()??"");break;
   case "disconnectProfile":var alias=r.GetProperty("alias").GetString()??"";if(connections.TryGetValue(alias,out var connection))connection.Dispose();if(terminals.Remove(alias,out var terminal))terminal.Finish();Log(alias+": SSH-Verbindung getrennt");break;
   case "pickVncViewer":var viewer=new Microsoft.Win32.OpenFileDialog{Title=L("VNC Viewer auswählen","Choose a VNC viewer"),Filter="VNC Viewer (*.exe)|*.exe"};if(viewer.ShowDialog(this)==true){saved.Settings.VncViewer=viewer.FileName;saved.Settings.ManagedViewer=false;Save();Push();}break;
   case "checkViewerUpdate":await viewerUpdates.Check();break;
@@ -275,7 +276,7 @@ public sealed class RelayWindow : Window {
  private async Task<SharedSession> Authenticate(string alias,SharedSession session){
   if(authenticating)throw new InvalidOperationException("Eine Schlüsselbestätigung läuft bereits. Bitte zuerst diese Anmeldung abschließen.");
   authenticating=true;authenticatingSession=session;
-  try{Notice("Verbinde mit "+alias+" … Den Sicherheitsschlüssel bestätigen, sobald Windows danach fragt.");await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);_=LoadVncServer(alias,session);return session;}
+  try{await session.Connect();Log(alias+": verbunden · Terminal und freigegebene Agenten nutzen denselben Kanal");_=LoadDeviceFacts(alias,session);_=LoadVncServer(alias,session);return session;}
   finally{authenticating=false;authenticatingSession=null;Push();}
  }
  private async Task WaitForPi(string alias,string host){
@@ -297,8 +298,9 @@ public sealed class RelayWindow : Window {
    Save();Push();
   }catch{}
  }
- private void ConnectTerminal(string alias){
-  if(!connections.TryGetValue(alias,out var session)||!session.IsReady)throw new InvalidOperationException("Zuerst auf den Zugang klicken und den Sicherheitsschlüssel bestätigen.");
+ // Not connected yet: connect first (security key once), then open the terminal.
+ private async Task ConnectTerminal(string alias){
+  var session=await EnsureConnection(alias);
   if(!terminals.TryGetValue(alias,out var terminal)){terminal=new TerminalWindow(session,saved.Settings.Language);terminals[alias]=terminal;}
   terminal.Reveal();
  }

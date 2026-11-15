@@ -417,8 +417,17 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .key-veil.dark{background:rgba(32,32,32,.84);color:#f3f3f3}
 .key-veil.light{background:rgba(243,243,243,.88);color:#1b1b1b}
 .key-veil strong{font:600 16px "Segoe UI",sans-serif}
-.key-veil span:last-child{font:13px "Segoe UI",sans-serif;opacity:.75}
+.key-veil>span:nth-of-type(2){font:13px "Segoe UI",sans-serif;opacity:.75}
+.key-veil-actions{display:flex;gap:8px;margin-top:16px}
+.key-veil-actions button{font:13px "Segoe UI",sans-serif;padding:6px 16px;border-radius:5px;border:1px solid;cursor:pointer}
+.key-veil.dark .key-veil-actions button{background:#2d2d2d;color:#f3f3f3;border-color:#ffffff1f}
+.key-veil.dark .key-veil-actions button:hover{background:#383838}
+.key-veil.light .key-veil-actions button{background:#fdfdfd;color:#1b1b1b;border-color:#0000001f}
+.key-veil.light .key-veil-actions button:hover{background:#f0f0f0}
 .key-veil-icon{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
 .key-veil.dark .key-veil-icon{background:#2d2d2d;box-shadow:0 0 0 1px #ffffff1a}
 .key-veil.light .key-veil-icon{background:#ffffff;box-shadow:0 0 0 1px #0000001a}
 [data-motion="false"] .key-veil{transition:none}
+/* The board name connects while the Pi is not connected. */
+.device-title h2.connect-title{cursor:pointer}
+.device-title h2.connect-title:hover{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px;text-decoration-color:#ee96af90}
