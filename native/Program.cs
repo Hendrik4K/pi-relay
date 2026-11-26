@@ -83,6 +83,9 @@ public sealed class RelayWindow : Window {
  // The open panel folds itself away after 6 s without the mouse over it or typing in it.
  private static readonly TimeSpan AutoCollapseAfter=TimeSpan.FromSeconds(6);
  private readonly System.Windows.Threading.DispatcherTimer idleTimer=new(){Interval=TimeSpan.FromSeconds(1)};
+ // Tray dots: lit while an agent is connected, blinking while it works.
+ private readonly System.Windows.Threading.DispatcherTimer blinkTimer=new(){Interval=TimeSpan.FromMilliseconds(600)};
+ private bool blinkOn=true;
  private DateTime lastPanelActivity=DateTime.UtcNow;
  private readonly Stopwatch resizeClock=new();
  private double panelTargetHeight=440,resizeFromHeight;
@@ -111,6 +114,7 @@ public sealed class RelayWindow : Window {
   revealTimer.Tick+=(_,_)=>FinishReveal();
   resizeTimer.Tick+=(_,_)=>AdvancePanelSize();
   idleTimer.Tick+=(_,_)=>CheckIdleCollapse();idleTimer.Start();
+  blinkTimer.Tick+=(_,_)=>{blinkOn=!blinkOn;UpdateIcon();};
   BuildTrayMenu();tray.Text=L("Pi Relay · getrennt","Pi Relay · disconnected");tray.MouseClick+=(_,e)=>{if(e.Button==Forms.MouseButtons.Left)Dispatcher.Invoke(()=>{switch(PanelMotion.OnTrayClick(Phase)){case PanelAction.Collapse:CollapsePanel();break;case PanelAction.Reverse:case PanelAction.Reveal:RevealPanel();break;}});};StartSpinIfRestarted();UpdateIcon();tray.Visible=true;
   timer.Tick+=(_,_)=>{foreach(var connection in connections.Values)connection.Refresh();viewerUpdates.Tick();integratedViewer.Tick();if(++reachTicks>=(IsVisible&&Opacity>0?5:30))CheckReachability();Push();};timer.Start();
   // Tray startup is hidden, never iconically minimized. A taskbar-less WPF
@@ -425,7 +429,9 @@ public sealed class RelayWindow : Window {
  }
  // Redrawn only when something visible changed (agent states, spin angle); Push calls this every tick.
  private string iconKey="";
- private void UpdateIcon(){try{var key=agents.GetValueOrDefault("codex")?.VisibleState+"|"+agents.GetValueOrDefault("claude")?.VisibleState+"|"+spinAngle;if(key==iconKey&&trayIcon!=null)return;iconKey=key;var berry=Berry();if(berry==null)return;using var bitmap=new Bitmap(32,32);using(var g=Graphics.FromImage(bitmap)){g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;DrawBerry(g,berry);using var blue=new SolidBrush(agents.TryGetValue("codex",out var a)&&a.VisibleState is "active" or "busy"?Color.FromArgb(66,133,255):Color.FromArgb(81,89,112));using var orange=new SolidBrush(agents.TryGetValue("claude",out var b)&&b.VisibleState is "active" or "busy"?Color.FromArgb(218,119,86):Color.FromArgb(107,84,79));g.FillEllipse(blue,25,8,6,6);g.FillEllipse(orange,25,19,6,6);}var handle=bitmap.GetHicon();var next=(System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone();DestroyIcon(handle);tray.Icon=next;trayIcon?.Dispose();trayIcon=next;tray.Text="Pi Relay · Codex: "+agents.GetValueOrDefault("codex")?.VisibleState+" · Claude: "+agents.GetValueOrDefault("claude")?.VisibleState;}catch{}}
+ private static bool AgentConnected(string? state)=>state is "ready" or "active" or "busy";
+ private static bool AgentWorking(string? state)=>state is "active" or "busy";
+ private void UpdateIcon(){try{var codexState=agents.GetValueOrDefault("codex")?.VisibleState;var claudeState=agents.GetValueOrDefault("claude")?.VisibleState;var working=AgentWorking(codexState)||AgentWorking(claudeState);if(working&&!blinkTimer.IsEnabled){blinkOn=true;blinkTimer.Start();}else if(!working&&blinkTimer.IsEnabled){blinkTimer.Stop();blinkOn=true;}var key=codexState+"|"+claudeState+"|"+spinAngle+"|"+(working&&blinkOn);if(key==iconKey&&trayIcon!=null)return;iconKey=key;var berry=Berry();if(berry==null)return;bool Lit(string? state)=>AgentConnected(state)&&(!AgentWorking(state)||blinkOn);using var bitmap=new Bitmap(32,32);using(var g=Graphics.FromImage(bitmap)){g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;DrawBerry(g,berry);using var blue=new SolidBrush(Lit(codexState)?Color.FromArgb(66,133,255):Color.FromArgb(81,89,112));using var orange=new SolidBrush(Lit(claudeState)?Color.FromArgb(218,119,86):Color.FromArgb(107,84,79));g.FillEllipse(blue,25,8,6,6);g.FillEllipse(orange,25,19,6,6);}var handle=bitmap.GetHicon();var next=(System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone();DestroyIcon(handle);tray.Icon=next;trayIcon?.Dispose();trayIcon=next;tray.Text="Pi Relay · Codex: "+agents.GetValueOrDefault("codex")?.VisibleState+" · Claude: "+agents.GetValueOrDefault("claude")?.VisibleState;}catch{}}
  // Tray restart, optionally activating a tested staged build. Ending live SSH sessions needs a confirmation.
  private void Restart(bool activate){
   if(!ConfirmEndSessions(activate?L("Die neue Version aktivieren und Pi Relay neu starten?","Activate the new version and restart Pi Relay?"):L("Pi Relay jetzt neu starten?","Restart Pi Relay now?")))return;
@@ -435,7 +441,7 @@ public sealed class RelayWindow : Window {
   try{File.WriteAllText(SpinMarker,"");}catch{}
   Log(activate?"Neue Version wird aktiviert; Pi Relay startet neu":"Pi Relay startet neu");Quit();
  }
- private void Quit(){exiting=true;lifetime.Cancel();timer.Stop();spinTimer.Stop();idleTimer.Stop();collapseTimer.Stop();resizeTimer.Stop();foreach(var terminal in terminals.Values)terminal.Finish();foreach(var screen in screens.Values)screen.Finish(true);foreach(var a in agents.Values)a.Dispose();foreach(var session in connections.Values)session.Dispose();tray.Visible=false;tray.Dispose();trayIcon?.Dispose();System.Windows.Application.Current.Shutdown();}
+ private void Quit(){exiting=true;lifetime.Cancel();timer.Stop();spinTimer.Stop();idleTimer.Stop();blinkTimer.Stop();collapseTimer.Stop();resizeTimer.Stop();foreach(var terminal in terminals.Values)terminal.Finish();foreach(var screen in screens.Values)screen.Finish(true);foreach(var a in agents.Values)a.Dispose();foreach(var session in connections.Values)session.Dispose();tray.Visible=false;tray.Dispose();trayIcon?.Dispose();System.Windows.Application.Current.Shutdown();}
  [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr handle);
  [StructLayout(LayoutKind.Sequential)] private struct NativeRect{public int Left,Top,Right,Bottom;}
  [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window,out NativeRect rect);

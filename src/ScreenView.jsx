@@ -46,15 +46,19 @@ function useToolOrder(){
 function useMic(flash){
  const [on,setOn]=useState(false),[state,setState]=useState('off'),[level,setLevel]=useState(0),[devices,setDevices]=useState([]);
  const [device,setDevice]=useState(()=>{try{return localStorage.getItem(MIC_DEVICE_KEY)||'';}catch{return '';}});
- const wanted=useRef(false),capture=useRef(null),deviceRef=useRef(device);deviceRef.current=device;
+ const wanted=useRef(false),capture=useRef(null),generation=useRef(0),deviceRef=useRef(device);deviceRef.current=device;
  async function list(){try{const all=await navigator.mediaDevices.enumerateDevices();const mics=all.filter(d=>d.kind==='audioinput'&&d.deviceId&&d.deviceId!=='default'&&d.deviceId!=='communications');setDevices(mics);return mics;}catch{return [];}}
  function remember(id){setDevice(id);try{localStorage.setItem(MIC_DEVICE_KEY,id);}catch{}}
- function stopCapture(){const c=capture.current;capture.current=null;setLevel(0);if(!c)return;c.node.port.onmessage=null;c.stream.getTracks().forEach(t=>t.stop());c.ctx.close().catch(()=>{});}
+ function stopCapture(){generation.current++;const c=capture.current;capture.current=null;setLevel(0);if(!c)return;c.node.port.onmessage=null;c.stream.getTracks().forEach(t=>t.stop());c.ctx.close().catch(()=>{});}
+ // Returns false when a stop (or a newer start) arrived while the device was still opening.
  async function startCapture(id){
   stopCapture();
+  const mine=generation.current;
   const stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  if(generation.current!==mine){stream.getTracks().forEach(t=>t.stop());return false;}
   const ctx=new AudioContext({sampleRate:48000});
   await ctx.audioWorklet.addModule('mic-worklet.js');
+  if(generation.current!==mine){stream.getTracks().forEach(t=>t.stop());ctx.close().catch(()=>{});return false;}
   const node=new AudioWorkletNode(ctx,'pi-relay-mic',{numberOfInputs:1,numberOfOutputs:0,channelCount:1,channelCountMode:'explicit',channelInterpretation:'speakers'});
   let frames=0;
   node.port.onmessage=e=>{send('micChunk',{data:bytesToBase64(e.data.pcm)});if(++frames%3===0)setLevel(e.data.level);};
@@ -63,6 +67,7 @@ function useMic(flash){
   const track=stream.getAudioTracks()[0];
   track.onended=()=>{if(capture.current?.stream===stream)disable('Das Mikrofon wurde getrennt.');};
   list();
+  return true;
  }
  function enable(){wanted.current=true;setOn(true);setState('starting');send('micStart');}
  function disable(notice){wanted.current=false;setOn(false);setState('off');stopCapture();send('micStop');if(notice)flash(notice);}
@@ -70,7 +75,7 @@ function useMic(flash){
  // Host replies: on = receiver ready (start capturing), lost = SSH gone (switch stays on), error = off.
  async function onState(m){
   if(m.state==='on'){if(!wanted.current){send('micStop');return;}
-   try{await startCapture(deviceRef.current);setState('on');}
+   try{if(await startCapture(deviceRef.current))setState('on');}
    catch(e){disable(e.name==='OverconstrainedError'||e.name==='NotFoundError'?'Das gemerkte Mikrofon ist nicht angeschlossen. Mikro ausgeschaltet.':e.name==='NotAllowedError'?'Windows erlaubt Pi Relay das Mikrofon nicht (Einstellungen › Datenschutz › Mikrofon).':'Mikrofon lässt sich nicht öffnen: '+(e.message||e.name));}}
   else if(m.state==='lost'){stopCapture();if(wanted.current)setState('waiting');if(m.message)flash(m.message);}
   else if(m.state==='error'){disable(m.message);}
