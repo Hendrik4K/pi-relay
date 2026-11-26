@@ -48,15 +48,14 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 
 Pi Relay is a no-fuss bridge to your Raspberry Pi without a monitor. No more HDMI cables.
 
-- **Your own remote screen for the Pi, right in Windows.** A dedicated window where you see and use the Pi like a second screen. Everything runs through your SSH connection.
-- **Mouse, keyboard and microphone.** Use your Windows PC's mouse, keyboard and microphone without plugging anything into the Pi.
-- **Files and clipboard.** Drag & drop files into the window and they land on the Pi desktop. Copy & paste works both ways: whatever you copied last, you keep using right on the Pi. And "To Pi" sends it over again any time.
-- **Terminal with one click.** The `>_` button next to your access opens a real SSH terminal on your Pi.
-- **Your AI agents right on the Pi.** Codex (ChatGPT) or Claude work in one project folder you share. Reading is fine; changing files and running commands you switch on one by one.
-- **Keys under control.** Manage your SSH keys right in the app; YubiKey & co. work.
-- **Your own pictures.** Stay on the Pi, Codex or Claude with the mouse for about 5 seconds, then click "Change PNG" and pick your picture.
-- **English or German.** One click on the language switch in the settings and everything changes language.
-- **Low-key and plug & play.** Pi Relay waits quietly in the taskbar and is there with one click.
+- **Remote screen right in Windows**<br>A dedicated window where you see and use the Pi like a second screen. Everything runs through your SSH connection.
+- **Mouse, keyboard and microphone**<br>Use your Windows PC's mouse, keyboard and microphone without plugging anything into the Pi.
+- **Files and clipboard**<br>Drag & drop files into the window and they land on the Pi desktop. Copy & paste works both ways, and "To Pi" sends whatever you copied last over again any time.
+- **Terminal with one click**<br>The `>_` button next to your access opens a real SSH terminal on your Pi.
+- **AI agents right on the Pi**<br>Codex (ChatGPT) or Claude work in one project folder you share. Reading is fine; changing files and running commands you switch on one by one.
+- **Keys and your own pictures**<br>Manage your SSH keys right in the app; YubiKey & co. work. Stay on the Pi, Codex or Claude with the mouse for about 5 seconds, then click "Change PNG" and pick your picture.
+- **Language**<br>English and German, switched with one click in the settings.
+- **Low-key and plug & play**<br>Pi Relay waits quietly in the taskbar and is there with one click.
 
 <ins>Why this exists:</ins> I had exactly this problem and found no ready-made solution. So I built one and now share it with everyone.
 

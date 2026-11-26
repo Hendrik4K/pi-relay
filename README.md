@@ -48,15 +48,14 @@ powershell -ExecutionPolicy Bypass -File build-installer.ps1
 
 Pi Relay ist eine unkomplizierte Brücke zu deinem Raspberry Pi ohne Monitor. HDMI-Kabel brauchst du keins mehr.
 
-- **Dein eigener Remote-Bildschirm für den Pi, direkt in Windows.** Ein extra Fenster, in dem du den Pi siehst und bedienst wie einen zweiten Bildschirm. Alles läuft über deine SSH-Verbindung.
-- **Maus, Tastatur und Mikrofon.** Nutze Maus, Tastatur und Mikrofon deines Windows-Rechners, ohne irgendwas an den Pi anschließen zu müssen.
-- **Dateien und Zwischenablage.** Zieh Dateien per Drag & Drop ins Fenster, schon liegen sie auf dem Pi-Desktop. Copy & Paste klappt in beide Richtungen: Was du zuletzt kopiert hast, nutzt du direkt auf dem Pi weiter. Und mit „An Pi“ schickst du es jederzeit nochmal rüber.
-- **Terminal mit einem Klick.** Der Knopf `>_` neben deinem Zugang öffnet ein echtes SSH-Terminal auf deinem Pi.
-- **Deine KI-Agenten direkt auf dem Pi.** Codex (ChatGPT) oder Claude arbeiten in einem Projektordner, den du freigibst. Lesen geht, Dateien ändern und Befehle knipst du einzeln an.
-- **Schlüssel im Griff.** SSH-Schlüssel verwaltest du direkt in der App, YubiKey & Co. funktionieren.
-- **Eigene Bilder.** Bleib etwa 5 Sekunden mit der Maus auf dem Pi, Codex oder Claude, dann „PNG ändern“ klicken und dein Bild einsetzen.
-- **Deutsch oder Englisch.** Ein Klick auf den Sprachschalter in den Einstellungen, und alles wechselt die Sprache.
-- **Alles dezent und Plug & Play.** Pi Relay wartet unauffällig in der Taskleiste und ist mit einem Klick da.
+- **Remote-Bildschirm direkt in Windows**<br>Ein extra Fenster, in dem du den Pi siehst und bedienst wie einen zweiten Bildschirm. Alles läuft über deine SSH-Verbindung.
+- **Maus, Tastatur und Mikrofon**<br>Nutze Maus, Tastatur und Mikrofon deines Windows-Rechners, ohne irgendwas an den Pi anschließen zu müssen.
+- **Dateien und Zwischenablage**<br>Zieh Dateien per Drag & Drop ins Fenster, schon liegen sie auf dem Pi-Desktop. Copy & Paste klappt in beide Richtungen, und mit „An Pi“ schickst du das zuletzt Kopierte jederzeit nochmal rüber.
+- **Terminal mit einem Klick**<br>Der Knopf `>_` neben deinem Zugang öffnet ein echtes SSH-Terminal auf deinem Pi.
+- **KI-Agenten direkt auf dem Pi**<br>Codex (ChatGPT) oder Claude arbeiten in einem Projektordner, den du freigibst. Lesen geht, Dateien ändern und Befehle knipst du einzeln an.
+- **Schlüssel und eigene Bilder**<br>SSH-Schlüssel verwaltest du direkt in der App, YubiKey & Co. funktionieren. Bleib etwa 5 Sekunden mit der Maus auf dem Pi, Codex oder Claude, dann „PNG ändern“ klicken und dein Bild einsetzen.
+- **Sprache**<br>Deutsch und Englisch, umschaltbar mit einem Klick in den Einstellungen.
+- **Dezent und Plug & Play**<br>Pi Relay wartet unauffällig in der Taskleiste und ist mit einem Klick da.
 
 <ins>Warum es das gibt:</ins> Ich hatte genau dieses Problem und keine fertige Lösung dafür gefunden. Also habe ich sie gebaut und stelle sie jetzt allen zur Verfügung.
 
