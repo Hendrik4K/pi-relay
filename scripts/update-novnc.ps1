@@ -32,7 +32,8 @@ try {
     $info = Join-Path $root 'release-next\build-info.json'; if (Test-Path -LiteralPath $info) { Remove-Item -LiteralPath $info -Force }
     foreach ($file in $tracked) { $saved[$file] = [IO.File]::ReadAllBytes((Join-Path $root $file)) }
 
-    $appVersion = ([xml](Get-Content 'native\PiRelay.csproj' -Raw)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+    # The padded date version (YY.MM.DD) lives in the installer script; the project file keeps the plain number form.
+    $appVersion = [regex]::Match((Get-Content 'installer\PiRelay.iss' -Raw), '#define AppVersion "([^"]+)"').Groups[1].Value
     if ($Version -ne $current) {
         $changed = $true
         # No install scripts: noVNC needs none, and a compromised package could otherwise run code right here.
@@ -43,11 +44,10 @@ try {
         $package = Get-Content 'node_modules\@novnc\novnc\package.json' -Raw | ConvertFrom-Json
         if ($package.version -ne $Version) { throw 'Installierte noVNC-Version stimmt nicht.' }
         if ($package.license -ne 'MPL-2.0') { throw "Lizenz geändert ($($package.license)). Weitergabebedingungen prüfen, bevor das Update übernommen wird." }
-        $parts = ([version]$appVersion); $appVersion = "$($parts.Major).$($parts.Minor).$($parts.Build + 1)"
-        (Get-Content 'native\PiRelay.csproj' -Raw) -replace '<Version>[^<]+</Version>', "<Version>$appVersion</Version>" | Set-Content 'native\PiRelay.csproj' -NoNewline -Encoding utf8
-        (Get-Content 'installer\PiRelay.iss' -Raw) -replace '#define AppVersion "[^"]+"', "#define AppVersion `"$appVersion`"" | Set-Content 'installer\PiRelay.iss' -NoNewline -Encoding utf8
-        (Get-Content 'build-installer.ps1' -Raw) -replace "\[string\]\`$Version='[^']+'", "[string]`$Version='$appVersion'" | Set-Content 'build-installer.ps1' -NoNewline -Encoding utf8
-        (Get-Content 'THIRD-PARTY-NOTICES.md' -Raw).Replace("noVNC $current", "noVNC $Version").Replace('`@novnc/novnc` ' + $current, '`@novnc/novnc` ' + $Version) | Set-Content 'THIRD-PARTY-NOTICES.md' -NoNewline -Encoding utf8
+        $appVersion = & (Join-Path $PSScriptRoot 'bump-version.ps1') | Select-Object -Last 1
+        # Explicit UTF-8 without BOM: Windows PowerShell 5 would read the BOM-less file as ANSI and break its umlauts.
+        $notices = Join-Path $root 'THIRD-PARTY-NOTICES.md'; $utf8 = [Text.UTF8Encoding]::new($false)
+        [IO.File]::WriteAllText($notices, [IO.File]::ReadAllText($notices, $utf8).Replace("noVNC $current", "noVNC $Version").Replace('`@novnc/novnc` ' + $current, '`@novnc/novnc` ' + $Version), $utf8)
         Write-Host "Pi Relay $appVersion enthält noVNC $Version." -ForegroundColor Cyan
     }
 
